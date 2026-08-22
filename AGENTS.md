@@ -31,9 +31,32 @@ lib/
   billing/              # plans.ts (plan config) + billing-store.ts
   i18n/                 # i18next setup, en.ts + de.ts translations
   storage.ts            # AsyncStorage + SecureStore wrappers
+  config.ts             # Central config from EXPO_PUBLIC_* env vars
+  api/                  # Typed fetch client + useQuery/useMutation hooks
+  ai/                   # Streaming chat adapter (OpenAI-compatible + offline mock)
+  analytics/            # Analytics provider pattern (swap PostHog/Amplitude here)
+  notifications/        # Push permission/token/register flow
+  storage/files.ts      # Presigned-URL file upload flow
 ui/index.tsx            # Design system: Text, Screen, Button, Card, Input,
                         # Avatar, Badge, SegmentedControl, ListRow
 ```
+
+## Category modules
+
+Feature-category boilerplate lives in `lib/<category>/`. Each module is a
+self-contained adapter with a narrow interface — screens never talk to SDKs
+directly:
+
+| Category | Entry point | Swap-in point |
+| --- | --- | --- |
+| API | `api/client.ts` | `config.apiUrl` / `setAuthToken` |
+| AI chat | `ai/chat.ts` (`streamChat`) | any OpenAI-compatible endpoint via `EXPO_PUBLIC_AI_API_KEY`; offline mock without key |
+| File upload | `storage/files.ts` (`uploadFile`) | backend `POST /files/presign` |
+| Analytics | `analytics/index.ts` | `setAnalyticsProvider()` |
+| Push | `notifications/push.ts` | install expo-notifications, implement `getPushToken` |
+
+Example usage: the Assistant screen (`app/(app)/assistant.tsx`) consumes
+`streamChat` end-to-end with token streaming.
 
 ## Conventions
 

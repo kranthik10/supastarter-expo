@@ -31,6 +31,11 @@ Then press `i` for iOS simulator, `a` for Android emulator, or scan the QR code 
 | Billing plans & upgrade flow | `lib/billing/` |
 | Settings (theme, language, account) | `app/(app)/(tabs)/settings.tsx` |
 | Design system | `ui/index.tsx` |
+| Typed API client + hooks | `lib/api/` |
+| AI chat (streaming + offline mock) | `lib/ai/` — demo: Assistant screen |
+| File upload (presigned flow) | `lib/storage/files.ts` |
+| Analytics provider pattern | `lib/analytics/` |
+| Push notifications flow | `lib/notifications/push.ts` |
 
 ## Demo mode
 
