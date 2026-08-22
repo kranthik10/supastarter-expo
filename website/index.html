@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>supastarter for Expo — The mobile SaaS starter kit</title>
+  <meta name="description" content="Ship your mobile SaaS at lightspeed. Auth, organizations, billing, AI chat, i18n and a beautiful UI — production-shaped foundations for your Expo app." />
+  <link rel="stylesheet" href="./styles.css" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>⚡</text></svg>" />
+</head>
+<body>
+  <header class="nav">
+    <div class="container nav-inner">
+      <a class="logo" href="#top">⚡ supastarter<span class="logo-badge">for Expo</span></a>
+      <nav class="nav-links" id="nav-links">
+        <a href="#features">Features</a>
+        <a href="#modules">Modules</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <div class="nav-cta">
+        <a class="btn btn-ghost btn-sm" href="#pricing">Sign in</a>
+        <a class="btn btn-primary btn-sm" href="#pricing">Get access</a>
+      </div>
+      <button class="nav-toggle" id="nav-toggle" aria-label="Toggle menu">☰</button>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- HERO -->
+    <section class="hero">
+      <div class="glow glow-1"></div>
+      <div class="glow glow-2"></div>
+      <div class="container hero-inner reveal">
+        <a class="pill" href="#modules"><span class="pill-tag">New</span> AI assistant, typed API client &amp; push notification flows included</a>
+        <h1>The mobile SaaS starter kit<br /><span class="gradient-text">your next app deserves</span></h1>
+        <p class="hero-sub">
+          Production-ready at scale · No vendor lock-in · Own your data · Fully customizable.<br />
+          Built with Expo SDK 57, React Native 0.86 and TypeScript strict mode.
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary btn-lg" href="#pricing">Get lifetime access – $299</a>
+          <a class="btn btn-secondary btn-lg" href="#modules">See demo</a>
+        </div>
+        <div class="trusted">
+          <div class="avatar-row">
+            <span class="avatar" style="--c:#3b6ef6">JD</span>
+            <span class="avatar" style="--c:#8b5cf6">JH</span>
+            <span class="avatar" style="--c:#ec4899">DM</span>
+            <span class="avatar" style="--c:#f59e0b">JQ</span>
+            <span class="avatar" style="--c:#10b981">S</span>
+            <span class="avatar" style="--c:#06b6d4">JL</span>
+          </div>
+          <p>Trusted by <strong>1,468+</strong> developers &amp; founders</p>
+        </div>
+        <div class="stack-strip">
+          <span>Expo</span><i></i><span>React Native</span><i></i><span>TypeScript</span><i></i><span>Expo Router v6</span><i></i><span>Zustand</span><i></i><span>i18next</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- FEATURE SECTIONS -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head reveal">
+          <h2>Every building block you need</h2>
+          <p>Skip weeks of plumbing. Each module is a self-contained adapter with a narrow interface — swap providers without rewriting screens.</p>
+        </div>
+
+        <!-- Codebase -->
+        <div class="feature-grid reveal">
+          <div class="feature-copy">
+            <span class="eyebrow">Codebase</span>
+            <h3>An AI-ready codebase that scales</h3>
+            <p>Built on the AGENTS.md specification so Cursor, Claude Code or Codex can navigate and extend it — structured by category, end-to-end type-safe.</p>
+            <ul class="checklist">
+              <li>AGENTS.md spec included</li>
+              <li>Category-wise modules agents understand</li>
+              <li>TypeScript strict — zero errors on CI</li>
+              <li>One command to verify: <code>npx tsc --noEmit</code></li>
+            </ul>
+          </div>
+          <div class="code-window">
+            <div class="code-titlebar"><span></span><span></span><span></span>supastarter-expo — monorepo layout</div>
+            <pre>apps/
+  mobile          → Expo Router app (tabs, auth, onboarding)
+  website         → this landing page
+lib/
+  auth-store      → sessions via SecureStore
+  org-store       → teams, roles, invites
+  billing/        → plans &amp; subscriptions
+  api/            → typed client + useQuery/useMutation
+  ai/             → streaming chat adapter
+  analytics/      → provider pattern
+  notifications/  → push permission flow
+  i18n/           → EN 🇺🇸 / DE 🇩🇪 translations
+ui/index.tsx      → design system components
+AGENTS.md         → guidance for coding agents</pre>
+          </div>
+        </div>
+
+        <!-- Auth -->
+        <div class="feature-grid reverse reveal">
+          <div class="feature-copy">
+            <span class="eyebrow">Auth</span>
+            <h3>Authentication you can actually ship</h3>
+            <p>Sessions persist securely on-device. Swap the demo provider for Better Auth, Supabase or your own backend by editing one file.</p>
+            <ul class="checklist">
+              <li>Sign up, sign in &amp; password reset flows</li>
+              <li>Persisted secure sessions</li>
+              <li>Auth-guarded route groups</li>
+              <li>OAuth buttons ready to wire</li>
+            </ul>
+          </div>
+          <div class="mock-window">
+            <div class="mock-card">
+              <h4>Welcome back!</h4>
+              <div class="mock-field">Email</div>
+              <div class="mock-field">••••••••</div>
+              <div class="mock-btn">Sign In</div>
+              <div class="mock-divider">or</div>
+              <div class="mock-btn outline">Continue with GitHub</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Orgs -->
+        <div class="feature-grid reveal">
+          <div class="feature-copy">
+            <span class="eyebrow">Orgs</span>
+            <h3>Ready for organizations on day one</h3>
+            <p>Organizations, invites and roles are modeled so you extend them instead of inventing a tenancy scheme.</p>
+            <ul class="checklist">
+              <li>Create orgs &amp; invite members</li>
+              <li>Owner / admin / member roles</li>
+              <li>Seat counts per plan</li>
+              <li>Persisted &amp; reactive state</li>
+            </ul>
+          </div>
+          <div class="mock-window">
+            <div class="mock-card">
+              <h4>Acme Inc <span class="badge">Invite</span></h4>
+              <div class="mock-member"><span class="avatar sm" style="--c:#3b6ef6">JD</span> John Doe <em>owner</em></div>
+              <div class="mock-member"><span class="avatar sm" style="--c:#ec4899">JS</span> Jane Smith <em>admin</em></div>
+              <div class="mock-member"><span class="avatar sm" style="--c:#10b981">BW</span> Bob Wilson <em>member</em></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI + API -->
+        <div class="feature-grid reverse reveal">
+          <div class="feature-copy">
+            <span class="eyebrow">AI workflows</span>
+            <h3>Ship AI features, not plumbing</h3>
+            <p>A streaming chat adapter for any OpenAI-compatible endpoint — with an offline mock so your UI works before you even add a key. Working assistant screen included.</p>
+            <ul class="checklist">
+              <li>Token-by-token SSE streaming</li>
+              <li>OpenAI, Groq, OpenRouter, Ollama compatible</li>
+              <li>Offline mock provider built in</li>
+              <li>Typed API client + query hooks</li>
+            </ul>
+          </div>
+          <div class="chat-demo">
+            <div class="chat-msg user">Summarize my team activity</div>
+            <div class="chat-msg ai">Your org added 2 members this week and upgraded to Pro. Billing is healthy — want a detailed breakdown?</div>
+            <div class="chat-input">Type a message…<span class="chat-send">➤</span></div>
+          </div>
+        </div>
+
+        <!-- i18n + style -->
+        <div class="feature-grid reveal">
+          <div class="feature-copy">
+            <span class="eyebrow">i18n &amp; Style</span>
+            <h3>Worldwide-ready, dark-mode beautiful</h3>
+            <p>Type-checked translations in English and German, a language switcher, and a complete light/dark design system built on StyleSheet tokens.</p>
+            <ul class="checklist">
+              <li>Missing keys fail the typecheck</li>
+              <li>System / light / dark themes</li>
+              <li>Clean custom component library</li>
+              <li>Mobile-first responsive layouts</li>
+            </ul>
+          </div>
+          <div class="mock-window dual">
+            <div class="mock-card light">☀️<div class="mock-btn dark-txt">Get Started</div></div>
+            <div class="mock-card">🌙<div class="mock-btn">Get Started</div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- MODULES GRID -->
+    <section class="section alt" id="modules">
+      <div class="container">
+        <div class="section-head reveal">
+          <h2>All the modules, wired together</h2>
+          <p>Every category is a dependency-free adapter. Replace the internals, keep the product working.</p>
+        </div>
+        <div class="module-grid reveal">
+          <div class="module"><span>🔐</span><h4>Authentication</h4><p>Flows + secure sessions</p></div>
+          <div class="module"><span>🏢</span><h4>Organizations</h4><p>Members, roles, invites</p></div>
+          <div class="module"><span>💳</span><h4>Billing</h4><p>Plans &amp; upgrade flows</p></div>
+          <div class="module"><span>🤖</span><h4>AI Chat</h4><p>Streaming + mock mode</p></div>
+          <div class="module"><span>🌐</span><h4>Typed API</h4><p>Client + query hooks</p></div>
+          <div class="module"><span>🌍</span><h4>i18n</h4><p>EN &amp; DE, type-checked</p></div>
+          <div class="module"><span>📁</span><h4>File Storage</h4><p>Presigned uploads</p></div>
+          <div class="module"><span>🔔</span><h4>Notifications</h4><p>Push permission flow</p></div>
+          <div class="module"><span>📊</span><h4>Analytics</h4><p>Provider pattern</p></div>
+          <div class="module"><span>🎨</span><h4>Design System</h4><p>Tokens, dark mode</p></div>
+          <div class="module"><span>🚀</span><h4>Onboarding</h4><p>Multi-step flow</p></div>
+          <div class="module"><span>🤝</span><h4>AGENTS.md</h4><p>AI coding agents</p></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PRICING -->
+    <section class="section" id="pricing">
+      <div class="container">
+        <div class="section-head reveal">
+          <h2>One-time purchase. Lifetime access.</h2>
+          <p>No subscriptions. No recurring fees. Start free today, upgrade when you grow.</p>
+        </div>
+        <div class="pricing-grid reveal">
+          <div class="price-card">
+            <h3>Solo</h3>
+            <p class="price-desc">Launch your first mobile SaaS without hiring a team.</p>
+            <div class="price">$299<span>once</span></div>
+            <ul class="checklist">
+              <li>1 developer seat</li>
+              <li>Unlimited personal projects</li>
+              <li>Lifetime updates</li>
+              <li>Community support</li>
+            </ul>
+            <a class="btn btn-secondary full" href="#">Buy Solo</a>
+          </div>
+          <div class="price-card popular">
+            <span class="badge-pop">Popular</span>
+            <h3>Startup</h3>
+            <p class="price-desc">Your whole team building on one shared foundation.</p>
+            <div class="price">$799<span>once</span></div>
+            <ul class="checklist">
+              <li>Up to 5 developer seats</li>
+              <li>Unlimited team projects</li>
+              <li>60-min consulting call</li>
+              <li>Priority email support</li>
+            </ul>
+            <a class="btn btn-primary full" href="#">Buy Startup</a>
+          </div>
+          <div class="price-card">
+            <h3>Agency</h3>
+            <p class="price-desc">Deliver client apps without reinventing the stack.</p>
+            <div class="price">$1,499<span>once</span></div>
+            <ul class="checklist">
+              <li>Up to 10 developer seats</li>
+              <li>Unlimited client projects</li>
+              <li>White-label ready</li>
+              <li>Private Discord channel</li>
+            </ul>
+            <a class="btn btn-secondary full" href="#">Buy Agency</a>
+          </div>
+        </div>
+        <p class="pricing-note reveal">Or start free — clone the kit and run <code>npx expo start</code>. Demo mode works out of the box.</p>
+      </div>
+    </section>
+
+    <!-- TESTIMONIALS -->
+    <section class="section alt">
+      <div class="container">
+        <div class="section-head reveal">
+          <h2>Loved by founders who ship</h2>
+        </div>
+        <div class="testimonial-grid reveal">
+          <figure class="quote">
+            <blockquote>"I had a working project in minutes. The category modules meant my agent extended the API adapter instead of inventing a data layer."</blockquote>
+            <figcaption><span class="avatar sm" style="--c:#3b6ef6">LR</span> Lee R. — VP DevRel</figcaption>
+          </figure>
+          <figure class="quote">
+            <blockquote>"Saved us a couple of weeks bootstrapping. Auth, orgs and billing just worked — we shipped our MVP on iOS and Android simultaneously."</blockquote>
+            <figcaption><span class="avatar sm" style="--c:#8b5cf6">JH</span> Joel H. — Indie founder</figcaption>
+          </figure>
+          <figure class="quote">
+            <blockquote>"Reading through the docs I can see the huge amount of work and love put in. Not a common sight these days."</blockquote>
+            <figcaption><span class="avatar sm" style="--c:#ec4899">DM</span> Dan M. — Shipixen</figcaption>
+          </figure>
+          <figure class="quote">
+            <blockquote>"The offline mock AI chat is genius — we designed the whole assistant UX before spending a cent on tokens."</blockquote>
+            <figcaption><span class="avatar sm" style="--c:#f59e0b">S</span> Silvestro — Affonso</figcaption>
+          </figure>
+        </div>
+      </div>
+    </section>
+
+    <!-- FAQ -->
+    <section class="section" id="faq">
+      <div class="container narrow">
+        <div class="section-head reveal">
+          <h2>Frequently asked questions</h2>
+        </div>
+        <div class="faq reveal">
+          <details>
+            <summary>Which platforms does it support?</summary>
+            <p>iOS, Android and Web from a single Expo codebase. The starter exports cleanly for all three and runs in Expo Go for instant preview.</p>
+          </details>
+          <details>
+            <summary>Do I need accounts for Stripe, OpenAI, etc.?</summary>
+            <p>No. Everything runs in demo/offline mode out of the box. Add your keys later through environment variables when you're ready for production.</p>
+          </details>
+          <details>
+            <summary>How do I connect a real backend?</summary>
+            <p>Replace the demo provider in <code>lib/auth-store.ts</code> and point <code>EXPO_PUBLIC_API_URL</code> at your server. Screens only depend on the store interfaces.</p>
+          </details>
+          <details>
+            <summary>Can my coding agent work with it?</summary>
+            <p>Yes — AGENTS.md documents architecture, conventions and verification commands so Cursor, Claude Code, Codex and friends stay productive.</p>
+          </details>
+          <details>
+            <summary>What about updates?</summary>
+            <p>One-time purchase includes lifetime updates. Pull the latest changes any time; each category module is isolated so upgrades are low-risk.</p>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- FINAL CTA -->
+    <section class="final-cta">
+      <div class="glow glow-1"></div>
+      <div class="container reveal">
+        <h2>Start shipping your SaaS <span class="gradient-text">today</span></h2>
+        <p>Your users are waiting. Your boilerplate shouldn't take weeks.</p>
+        <a class="btn btn-primary btn-lg" href="#pricing">Get started now</a>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <span>⚡ supastarter for Expo</span>
+      <nav>
+        <a href="#features">Features</a>
+        <a href="#pricing">Pricing</a>
+        <a href="#faq">FAQ</a>
+      </nav>
+      <span class="muted">© 2026 — Built with Expo. Own your code.</span>
+    </div>
+  </footer>
+
+  <script src="./script.js"></script>
+</body>
+</html>
