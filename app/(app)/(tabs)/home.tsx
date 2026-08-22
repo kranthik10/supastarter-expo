@@ -56,6 +56,12 @@ export default function Home() {
       </Text>
       <View style={styles.actions}>
         <Button
+          label="🤖 Assistant"
+          variant="secondary"
+          onPress={() => router.push('/assistant')}
+          full
+        />
+        <Button
           label={t('home.inviteMember')}
           variant="secondary"
           onPress={() => router.push('/team')}
