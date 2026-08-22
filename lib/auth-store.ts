@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { storage, secureStorage } from './storage';
+import { analytics } from './analytics';
 
 export type User = {
   id: string;
@@ -78,6 +79,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
     await persist(user);
     set({ user, loading: false });
+    analytics.track('sign_in', { method: 'password' });
   },
 
   signUp: async (name, email, password) => {
@@ -98,9 +100,12 @@ export const useAuth = create<AuthState>((set, get) => ({
     await storage.set(`users.${user.email}`, JSON.stringify(user));
     await persist(user);
     set({ user, loading: false });
+    analytics.identify(user.id, { email: user.email });
+    analytics.track('sign_up', { method: 'password' });
   },
 
   signOut: async () => {
+    analytics.track('sign_out');
     await persist(null);
     set({ user: null });
   },
