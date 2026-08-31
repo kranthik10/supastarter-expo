@@ -1,0 +1,11 @@
+appId: com.mobilesaas.app
+---
+- launchApp:
+    clearState: true
+- openLink: "mobile-saas-dev://invite/ABC123"
+- assertVisible: "Sign in"
+# After auth, invite should resolve
+- inputText: "demo@example.com"
+- tapOn: "Continue"
+- assertVisible: "Invite"
+

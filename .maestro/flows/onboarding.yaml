@@ -1,0 +1,13 @@
+appId: com.mobilesaas.app
+---
+- launchApp:
+    clearState: true
+- tapOn: "Sign in"
+- inputText: "newuser@example.com"
+- tapOn: "Continue"
+- assertVisible: "Welcome"
+- tapOn: "Create Organization"
+- inputText: "Acme"
+- tapOn: "Create"
+- assertVisible: "Home"
+

@@ -1,0 +1,10 @@
+{
+  "extends": "../../tooling/typescript/base.json",
+  "compilerOptions": {
+    "composite": false,
+    "allowSyntheticDefaultImports": true,
+    "jsx": "react-jsx",
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["src"]
+}

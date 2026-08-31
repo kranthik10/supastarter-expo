@@ -1,0 +1,17 @@
+{
+  "extends": "../../tooling/typescript/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@repo/*": [
+        "../*/src"
+      ]
+    },
+    "ignoreDeprecations": "6.0",
+    "composite": false,
+    "allowSyntheticDefaultImports": true
+  },
+  "include": [
+    "src"
+  ]
+}

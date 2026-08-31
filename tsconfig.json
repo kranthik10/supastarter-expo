@@ -1,20 +1,46 @@
 {
-  "extends": "expo/tsconfig.base",
-  "compilerOptions": {
-    "strict": true,
-    "paths": {
-      "@/*": [
-        "./*"
-      ],
-      "@/assets/*": [
-        "./assets/*"
-      ]
+  "references": [
+    {
+      "path": "./apps/mobile"
+    },
+    {
+      "path": "./packages/types"
+    },
+    {
+      "path": "./packages/config"
+    },
+    {
+      "path": "./packages/ui"
+    },
+    {
+      "path": "./packages/api"
+    },
+    {
+      "path": "./packages/auth"
+    },
+    {
+      "path": "./packages/database"
+    },
+    {
+      "path": "./packages/organizations"
+    },
+    {
+      "path": "./packages/permissions"
+    },
+    {
+      "path": "./packages/billing"
+    },
+    {
+      "path": "./packages/notifications"
+    },
+    {
+      "path": "./packages/storage"
+    },
+    {
+      "path": "./packages/analytics"
+    },
+    {
+      "path": "./packages/ai"
     }
-  },
-  "include": [
-    "**/*.ts",
-    "**/*.tsx",
-    ".expo/types/**/*.ts",
-    "expo-env.d.ts"
   ]
 }

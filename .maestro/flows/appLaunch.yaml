@@ -1,0 +1,7 @@
+appId: com.mobilesaas.app
+---
+- launchApp:
+    clearState: true
+- assertVisible: "Sign in"
+- assertVisible: "Welcome"
+

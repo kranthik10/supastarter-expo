@@ -1,0 +1,22 @@
+{
+  "extends": "../../tooling/typescript/base.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@repo/*": [
+        "../*/src"
+      ]
+    },
+    "ignoreDeprecations": "6.0",
+    "composite": false,
+    "allowSyntheticDefaultImports": true,
+    "types": [
+      "node"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": [
+    "src"
+  ]
+}

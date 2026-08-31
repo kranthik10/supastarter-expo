@@ -1,51 +1,45 @@
 {
-  "name": "supastarter-expo",
-  "main": "expo-router/entry",
+  "name": "mobile-saas-starter",
+  "private": true,
   "version": "1.0.0",
-  "dependencies": {
-    "@expo/ui": "~57.0.12",
-    "@react-native-async-storage/async-storage": "2.2.0",
-    "expo": "~57.0.15",
-    "expo-constants": "~57.0.13",
-    "expo-device": "~57.0.1",
-    "expo-font": "~57.0.1",
-    "expo-glass-effect": "~57.0.1",
-    "expo-image": "~57.0.3",
-    "expo-linking": "~57.0.7",
-    "expo-localization": "~57.0.1",
-    "expo-router": "~57.0.15",
-    "expo-secure-store": "~57.0.1",
-    "expo-splash-screen": "~57.0.7",
-    "expo-status-bar": "~57.0.1",
-    "expo-symbols": "~57.0.2",
-    "expo-system-ui": "~57.0.2",
-    "expo-web-browser": "~57.0.2",
-    "i18next": "^26.4.0",
-    "lucide-react-native": "^1.33.0",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "react-i18next": "^17.0.12",
-    "react-native": "0.86.2",
-    "react-native-gesture-handler": "~2.32.0",
-    "react-native-reanimated": "4.5.1",
-    "react-native-safe-area-context": "~5.7.0",
-    "react-native-screens": "~4.26.0",
-    "react-native-svg": "15.15.4",
-    "react-native-web": "~0.21.0",
-    "react-native-worklets": "0.10.1",
-    "zustand": "^5.0.15"
-  },
-  "devDependencies": {
-    "@types/react": "~19.2.2",
-    "typescript": "~6.0.3"
+  "packageManager": "pnpm@11.24.0",
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
-    "start": "expo start",
-    "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo start --android",
-    "ios": "expo start --ios",
-    "web": "expo start --web",
-    "lint": "expo lint"
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "lint": "turbo run lint",
+    "typecheck": "turbo run typecheck",
+    "test": "vitest run --passWithNoTests",
+    "clean": "turbo run clean",
+    "db:generate": "pnpm --filter @repo/database db:generate",
+    "db:migrate": "pnpm --filter @repo/database db:migrate",
+    "db:push": "pnpm --filter @repo/database db:push",
+    "db:seed": "pnpm --filter @repo/database db:seed"
   },
-  "private": true
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/react": "~19.2.18",
+    "@types/react-native": "^0.73.0",
+    "@vitest/coverage-v8": "^4.1.11",
+    "tsx": "^4.23.13",
+    "turbo": "^2.10.12",
+    "typescript": "~6.0.3",
+    "vitest": "^4.1.11"
+  },
+  "dependencies": {
+    "@hono/node-server": "^2.1.1",
+    "@hono/trpc-server": "^0.4.2",
+    "@paralleldrive/cuid2": "^2.3.1",
+    "@tanstack/react-query": "^5.102.8",
+    "@trpc/client": "^11.18.0",
+    "@trpc/server": "^11.18.0",
+    "better-auth": "^1.7.2",
+    "drizzle-orm": "^0.44.7",
+    "hono": "^4.13.5",
+    "react-native": "0.86.2",
+    "superjson": "^2.2.6",
+    "zod": "^4.5.4"
+  }
 }

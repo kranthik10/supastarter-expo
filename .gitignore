@@ -1,7 +1,6 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
-
 # dependencies
 node_modules/
+.pnpm-store/
 
 # Expo
 .expo/
@@ -30,14 +29,25 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local env files (keep .env.* templates committed, ignore local overrides)
+.env
+.env.local
+.env.*.local
 
 # typescript
 *.tsbuildinfo
 
-example
-
 # generated native folders
 /ios
 /android
+/apps/mobile/ios
+/apps/mobile/android
+
+# turbo
+.turbo/
+
+# drizzle
+drizzle/
+
+# pnpm - keep lockfile!
+# pnpm-lock.yaml intentionally not ignored (uncomment to ignore)

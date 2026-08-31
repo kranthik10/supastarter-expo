@@ -1,0 +1,14 @@
+appId: com.mobilesaas.app
+---
+- launchApp:
+    clearState: true
+- tapOn: "Sign in"
+- inputText: "demo@example.com"
+- tapOn: "Continue"
+- assertVisible: "Home"
+
+- tapOn: "Settings"
+- tapOn: "Sign out"
+- assertVisible: "Sign in"
+- assertVisible: "Protected route"
+
