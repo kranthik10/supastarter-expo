@@ -15,10 +15,12 @@ export type Permission =
 
 export type User = {
   id: string;
-  name: string;
+  name: string | null;
   email: string;
-  avatarColor: string;
-  createdAt: string;
+  image: string | null;
+  emailVerified: boolean;
+  createdAt: string; // ISO string
+  updatedAt: string; // ISO string
 };
 
 export type Organization = {
@@ -28,13 +30,14 @@ export type Organization = {
   logoUrl?: string | null;
   createdAt: string;
   updatedAt: string;
+  members?: Member[];
 };
 
 export type Member = {
   userId: string;
-  name: string;
+  name: string | null;
   email: string;
-  avatarColor: string;
+  image: string | null;
   role: MemberRole;
   joinedAt: string;
 };

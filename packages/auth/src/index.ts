@@ -1,130 +1,170 @@
-import { create } from 'zustand';
+import { createAuthClient } from '@better-auth/client';
 import { storage, secureStorage } from './storage';
 import { analytics } from '@repo/analytics';
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
+const AUTH_BASE_URL = `${API_URL}/api/auth`;
+
+// createAuthClient returns a factory; call it with options to get the client
+// Use 'any' to bypass complex conditional types - runtime API works
+const authClient: any = createAuthClient()({
+  baseURL: AUTH_BASE_URL,
+  fetchOptions: {
+    credentials: 'include',
+  },
+});
+
+type Session = Awaited<ReturnType<typeof authClient.getSession>>;
+type BetterAuthUser = NonNullable<Session>['user'];
+
 export type User = {
   id: string;
-  name: string;
+  name: string | null;
   email: string;
-  avatarColor: string;
-  createdAt: string;
+  image: string | null;
+  emailVerified: boolean;
+  createdAt: Date;
+  updatedAt: Date;
 };
 
 export type AuthState = {
   user: User | null;
+  session: Session | null;
   loading: boolean;
   hydrated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  updateProfile: (patch: Partial<Pick<User, 'name'>>) => Promise<void>;
+  updateProfile: (patch: Partial<Pick<User, 'name' | 'image'>>) => Promise<void>;
   deleteAccount: () => Promise<void>;
   hydrate: () => Promise<void>;
+  refreshSession: () => Promise<void>;
 };
 
 const SESSION_KEY = 'auth.session';
-const AVATAR_COLORS = ['#3b6ef6', '#8b5cf6', '#ec4899', '#f59e0b', '#10b981', '#06b6d4'];
 
-function colorForEmail(email: string) {
-  let hash = 0;
-  for (let i = 0; i < email.length; i++) hash = (hash * 31 + email.charCodeAt(i)) | 0;
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
+function mapBetterAuthUser(bUser: BetterAuthUser): User {
+  return {
+    id: bUser.id,
+    name: bUser.name,
+    email: bUser.email,
+    image: bUser.image,
+    emailVerified: bUser.emailVerified,
+    createdAt: bUser.createdAt,
+    updatedAt: bUser.updatedAt,
+  };
 }
 
-function validateEmail(email: string) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+async function persistSession(user: User | null, session: Session | null) {
+  if (user && session) {
+    await secureStorage.set(SESSION_KEY, JSON.stringify({ user, session }));
+  } else {
+    await secureStorage.remove(SESSION_KEY);
+  }
 }
 
-function delay(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
-async function persist(user: User | null) {
-  if (user) await secureStorage.set(SESSION_KEY, JSON.stringify(user));
-  else await secureStorage.remove(SESSION_KEY);
-}
+import { create } from 'zustand';
 
 export const useAuth = create<AuthState>((set, get) => ({
   user: null,
+  session: null,
   loading: false,
   hydrated: false,
 
   hydrate: async () => {
     try {
       const raw = await secureStorage.get(SESSION_KEY);
-      if (raw) set({ user: JSON.parse(raw) as User });
+      if (raw) {
+        const { user, session } = JSON.parse(raw) as { user: User; session: Session };
+        set({ user, session, hydrated: true });
+        return;
+      }
     } catch {}
     set({ hydrated: true });
   },
 
-  signIn: async (email, password) => {
-    if (!validateEmail(email)) throw new Error('invalidEmail');
-    if (password.length < 6) throw new Error('shortPassword');
-    set({ loading: true });
-    await delay(500);
-    const existingRaw = await storage.get(`users.${email.toLowerCase()}`);
-    let user: User;
-    if (existingRaw) {
-      user = JSON.parse(existingRaw) as User;
-    } else {
-      // Demo provider: unknown users are provisioned on first sign-in.
-      user = {
-        id: `u_${Date.now().toString(36)}`,
-        name: email.split('@')[0].replace(/[._-]/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()),
-        email: email.toLowerCase(),
-        avatarColor: colorForEmail(email),
-        createdAt: new Date().toISOString(),
-      };
-      await storage.set(`users.${user.email}`, JSON.stringify(user));
+  refreshSession: async () => {
+    try {
+      const session = await authClient.getSession();
+      if (session?.user) {
+        const user = mapBetterAuthUser(session.user);
+        set({ user, session });
+        await persistSession(user, session);
+      } else {
+        set({ user: null, session: null });
+        await persistSession(null, null);
+      }
+    } catch {
+      set({ user: null, session: null });
+      await persistSession(null, null);
     }
-    await persist(user);
-    set({ user, loading: false });
-    analytics.track('sign_in', { method: 'password' });
+  },
+
+  signIn: async (email, password) => {
+    set({ loading: true });
+    const result = await authClient.signIn.email({ email, password });
+    if (result.error) {
+      set({ loading: false });
+      throw new Error(result.error.message);
+    }
+    if (result.data?.user && result.data?.session) {
+      const user = mapBetterAuthUser(result.data.user);
+      set({ user, session: result.data.session, loading: false });
+      await persistSession(user, result.data.session);
+      analytics.track('sign_in', { method: 'password' });
+    } else {
+      set({ loading: false });
+      throw new Error('Sign in failed');
+    }
   },
 
   signUp: async (name, email, password) => {
-    if (!name.trim()) throw new Error('nameRequired');
-    if (!validateEmail(email)) throw new Error('invalidEmail');
-    if (password.length < 6) throw new Error('shortPassword');
     set({ loading: true });
-    await delay(600);
-    const normalized = email.toLowerCase();
-    if (await storage.get(`users.${normalized}`)) throw new Error('emailTaken');
-    const user: User = {
-      id: `u_${Date.now().toString(36)}`,
-      name: name.trim(),
-      email: normalized,
-      avatarColor: colorForEmail(email),
-      createdAt: new Date().toISOString(),
-    };
-    await storage.set(`users.${user.email}`, JSON.stringify(user));
-    await persist(user);
-    set({ user, loading: false });
-    analytics.identify(user.id, { email: user.email });
-    analytics.track('sign_up', { method: 'password' });
+    const result = await authClient.signUp.email({ name, email, password, autoCreateSession: true });
+    if (result.error) {
+      set({ loading: false });
+      throw new Error(result.error.message);
+    }
+    if (result.data?.user && result.data?.session) {
+      const user = mapBetterAuthUser(result.data.user);
+      set({ user, session: result.data.session, loading: false });
+      await persistSession(user, result.data.session);
+      analytics.identify(user.id, { email: user.email, name: user.name ?? '' });
+      analytics.track('sign_up', { method: 'password' });
+    } else {
+      set({ loading: false });
+      throw new Error('Sign up failed');
+    }
   },
 
   signOut: async () => {
+    await authClient.signOut();
     analytics.track('sign_out');
-    await persist(null);
-    set({ user: null });
+    set({ user: null, session: null });
+    await persistSession(null, null);
   },
 
   updateProfile: async (patch) => {
     const current = get().user;
     if (!current) return;
-    const next = { ...current, ...patch };
-    await storage.set(`users.${next.email}`, JSON.stringify(next));
-    await persist(next);
-    set({ user: next });
+    const result = await authClient.$invoke.patch('/user', { body: patch });
+    if (result.error) throw new Error(result.error);
+    if (result.data?.user) {
+      const user = mapBetterAuthUser(result.data.user);
+      set({ user });
+      await persistSession(user, get().session);
+    }
   },
 
   deleteAccount: async () => {
-    const current = get().user;
-    if (current) await storage.remove(`users.${current.email}`);
-    await persist(null);
-    set({ user: null });
+    const result = await authClient.$invoke.delete('/user');
+    if (result.error) throw new Error(result.error);
+    analytics.track('delete_account');
+    set({ user: null, session: null });
+    await persistSession(null, null);
   },
 }));
 
-export { validateEmail };
+export function validateEmail(email: string): boolean {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}

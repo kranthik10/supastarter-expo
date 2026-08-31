@@ -13,14 +13,16 @@ export default function Home() {
   const theme = useTheme();
   const router = useRouter();
   const { t } = useTranslation();
-  const user = useAuth((s) => s.user)!;
+  const user = useAuth((s) => s.user);
   const org = useActiveOrg();
   const plan = useBilling((s) => s.plan);
+
+  const displayName = user?.name?.split(' ')[0] ?? user?.email?.split('@')[0] ?? 'there';
 
   return (
     <Screen>
       <View style={styles.header}>
-        <Text variant="h1">{t('home.greeting', { name: user.name.split(' ')[0] })}</Text>
+        <Text variant="h1">{t('home.greeting', { name: displayName })}</Text>
         <Text variant="body" muted>
           {t('home.subtitle')}
         </Text>
@@ -37,7 +39,7 @@ export default function Home() {
         </Card>
         <Card style={styles.statCard}>
           <UserPlus color={theme.primary} size={20} />
-          <Text variant="h1">{org?.members.length ?? 1}</Text>
+          <Text variant="h1">{org?.members?.length ?? 1}</Text>
           <Text variant="small" muted>
             {t('home.statsMembers')}
           </Text>

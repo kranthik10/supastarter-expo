@@ -10,7 +10,7 @@ import { useActiveOrg, useOrgs, type MemberRole } from '@repo/organizations';
 export default function Team() {
   const theme = useTheme();
   const { t } = useTranslation();
-  const user = useAuth((s) => s.user)!;
+  const user = useAuth((s) => s.user);
   const org = useActiveOrg();
   const inviteMember = useOrgs((s) => s.inviteMember);
   const removeMember = useOrgs((s) => s.removeMember);
@@ -27,7 +27,7 @@ export default function Team() {
         <Card style={{ marginTop: 16 }}>
           <Button
             label={t('team.createOrg')}
-            onPress={() => createOrg(`${user.name.split(' ')[0]}'s Org`, user)}
+            onPress={() => createOrg(`${user?.name?.split(' ')[0] ?? t('common.user')}'s Org`, user as any)}
           />
         </Card>
       </Screen>
@@ -51,13 +51,16 @@ export default function Team() {
 
   const roleLabel = (r: MemberRole) => t(`team.${r}`);
 
+  const displayName = (name: string | null | undefined, email: string) => 
+    name ?? email.split('@')[0] ?? t('common.user');
+
   return (
     <Screen>
       <View style={styles.header}>
         <View style={{ flex: 1 }}>
           <Text variant="h1">🏢 {org.name}</Text>
           <Text variant="body" muted>
-            {t('team.subtitle', { count: org.members.length })}
+            {t('team.subtitle', { count: org.members?.length ?? 0 })}
           </Text>
         </View>
       </View>
@@ -87,11 +90,11 @@ export default function Team() {
       </Card>
 
       <Card style={styles.members}>
-        {org.members.map((m) => (
+        {(org.members ?? []).map((m) => (
           <ListRow
             key={m.userId}
-            leading={<Avatar name={m.name} color={m.avatarColor} />}
-            title={m.name}
+            leading={<Avatar name={displayName(m.name, m.email)} image={m.image ?? undefined} />}
+            title={displayName(m.name, m.email)}
             subtitle={m.email}
             trailing={
               <View style={styles.trailing}>

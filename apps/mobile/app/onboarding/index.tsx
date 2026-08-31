@@ -13,12 +13,12 @@ export default function Onboarding() {
   const theme = useTheme();
   const router = useRouter();
   const { t } = useTranslation();
-  const user = useAuth((s) => s.user)!;
+  const user = useAuth((s) => s.user);
   const updateProfile = useAuth((s) => s.updateProfile);
   const createOrg = useOrgs((s) => s.createOrg);
 
   const [step, setStep] = React.useState(0);
-  const [name, setName] = React.useState(user.name);
+  const [name, setName] = React.useState(user?.name ?? '');
   const [orgName, setOrgName] = React.useState('');
   const [error, setError] = React.useState<string | null>(null);
 
@@ -27,7 +27,15 @@ export default function Onboarding() {
     if (step === 1 && !name.trim()) return setError(t('auth.nameRequired'));
     if (step === 2 && !orgName.trim()) return setError(t('auth.nameRequired'));
     if (step === 1) await updateProfile({ name: name.trim() });
-    if (step === 2) createOrg(orgName, user);
+    if (step === 2) {
+      const slug = orgName.trim().toLowerCase().replace(/\s+/g, '-');
+      try {
+        await createOrg(orgName.trim(), slug);
+      } catch (e: any) {
+        setError(e?.message ?? t('common.error'));
+        return;
+      }
+    }
     setStep((s) => Math.min(s + 1, TOTAL));
   };
 

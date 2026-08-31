@@ -10,7 +10,7 @@ type UiMessage = AiMessage & { id: string };
 
 export default function Assistant() {
   const theme = useTheme();
-  const user = useAuth((s) => s.user)!;
+  const user = useAuth((s) => s.user);
 
   const [messages, setMessages] = React.useState<UiMessage[]>([
     { id: 'welcome', role: 'assistant', content: 'Hi! Ask me anything.' },
@@ -52,6 +52,8 @@ export default function Assistant() {
     }
   };
 
+  const displayName = user?.name ?? user?.email?.split('@')[0] ?? 'User';
+
   return (
     <Screen scroll={false}>
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -65,7 +67,7 @@ export default function Assistant() {
                 <View style={[styles.bubble, styles.userBubble, { backgroundColor: theme.primary }]}>
                   <Text style={{ color: theme.primaryForeground }}>{m.content}</Text>
                 </View>
-                <Avatar name={user.name} color={user.avatarColor} size={30} />
+                <Avatar name={displayName} image={user?.image ?? undefined} size={30} />
               </View>
             ) : (
               <View key={m.id} style={[styles.bubbleRow, styles.start]}>

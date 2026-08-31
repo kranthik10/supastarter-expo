@@ -20,12 +20,17 @@ export default function CreateOrganization() {
 
   if (!hydrated) return null;
 
-  const submit = () => {
+  const submit = async () => {
     setError(null);
     if (!orgName.trim()) return setError(t('auth.nameRequired'));
     if (!user) return;
-    createOrg(orgName.trim(), user);
-    router.replace('/home');
+    const slug = orgName.trim().toLowerCase().replace(/\s+/g, '-');
+    try {
+      await createOrg(orgName.trim(), slug);
+      router.replace('/home');
+    } catch (e: any) {
+      setError(e?.message ?? t('common.error'));
+    }
   };
 
   return (

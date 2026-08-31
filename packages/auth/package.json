@@ -8,9 +8,11 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
+    "@better-auth/client": "0.0.2-alpha.3",
+    "@react-native-async-storage/async-storage": "2.2.0",
     "@repo/analytics": "workspace:*",
     "@repo/storage": "workspace:*",
-    "@react-native-async-storage/async-storage": "2.2.0",
+    "@types/node": "^26.4.0",
     "expo-secure-store": "~57.0.1",
     "zustand": "^5.0.15"
   },

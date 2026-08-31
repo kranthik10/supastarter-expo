@@ -208,7 +208,31 @@ export function Input({ label, error, ...props }: InputProps) {
 
 /* ---------- Avatar ---------- */
 
-export function Avatar({ name, color, size = 40 }: { name: string; color: string; size?: number }) {
+export function Avatar({ 
+  name, 
+  color, 
+  size = 40, 
+  image 
+}: { 
+  name: string; 
+  color?: string; 
+  size?: number; 
+  image?: string;
+}) {
+  if (image) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius: radius.full,
+          overflow: 'hidden',
+        }}
+      >
+        <Image source={{ uri: image }} style={{ width: '100%', height: '100%', resizeMode: 'cover' }} />
+      </View>
+    );
+  }
   const initials = name
     .split(' ')
     .map((p) => p[0])
@@ -222,7 +246,7 @@ export function Avatar({ name, color, size = 40 }: { name: string; color: string
         width: size,
         height: size,
         borderRadius: radius.full,
-        backgroundColor: color,
+        backgroundColor: color ?? '#888',
         alignItems: 'center',
         justifyContent: 'center',
       }}
@@ -231,6 +255,8 @@ export function Avatar({ name, color, size = 40 }: { name: string; color: string
     </View>
   );
 }
+
+import { Image } from 'react-native';
 
 /* ---------- Badge ---------- */
 

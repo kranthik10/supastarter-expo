@@ -13,7 +13,7 @@ export default function Settings() {
   const theme = useTheme();
   const router = useRouter();
   const { t, i18n } = useTranslation();
-  const user = useAuth((s) => s.user)!;
+  const user = useAuth((s) => s.user);
   const signOut = useAuth((s) => s.signOut);
   const deleteAccount = useAuth((s) => s.deleteAccount);
   const { themeMode, setThemeMode, locale, setLocale } = useSettings();
@@ -33,6 +33,8 @@ export default function Settings() {
 
   const version = Constants.expoConfig?.version ?? '1.0.0';
 
+  const displayName = user?.name ?? user?.email?.split('@')[0] ?? t('common.user');
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -41,9 +43,9 @@ export default function Settings() {
 
       <Card style={styles.account}>
         <ListRow
-          leading={<Avatar name={user.name} color={user.avatarColor} size={48} />}
-          title={user.name}
-          subtitle={user.email}
+          leading={<Avatar name={displayName} image={user?.image ?? undefined} size={48} />}
+          title={displayName}
+          subtitle={user?.email ?? ''}
         />
       </Card>
 
