@@ -150,5 +150,5 @@ The existing i18n files were extended in English and German. TanStack Query is n
 
 - Implementation commit: `bb06f6d` — `feat: complete phase 3.3 user settings`.
 - Implementation GitHub Actions run: `33551508092` — completed successfully for head `bb06f6d`.
-- Documentation closure commit: pending local commit.
-- Final documentation-head GitHub Actions: pending remote verification.
+- Documentation closure commit: `fead120` — `docs: close phase 3.3 delivery`.
+- Documentation-head GitHub Actions run: `33551857104` — completed successfully for head `fead120`.
