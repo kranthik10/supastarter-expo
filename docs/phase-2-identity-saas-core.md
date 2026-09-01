@@ -1,8 +1,25 @@
 # Phase 2 — Identity & SaaS Core
 
-**Status:** Milestone 1 COMPLETE, Milestone 2 COMPLETE
+**Status: Phase 2 Application & CI Complete — Native Build Deferred**
 
 **Started:** 2026-08-31
+**Last updated:** 2026-09-01 — Phase 2 status clarification (no app code changes)
+
+---
+
+## Phase 2 Overall Status
+
+| Area | Status | Evidence |
+|------|--------|----------|
+| **Application/backend validation** | **COMPLETE** | `pnpm typecheck` 26 tasks PASS, `pnpm lint` 14 tasks PASS, `pnpm test` 30 tests PASS, `pnpm build` 14 tasks PASS (expo export → `dist`) |
+| **Authentication** | **COMPLETE** | Better Auth client → Hono → Better Auth server → PostgreSQL (`mobile_saas_dev`), session persistence via `expo-secure-store`, `hydrate()` + `refreshSession()` on launch, `users.me` protected |
+| **Organization + RBAC** | **COMPLETE** | `organizations.create` (server assigns `owner`), `organization_members` verified, `assertCan()` enforced per `rolePermissions` (see §2.3), 18 new RBAC tests added |
+| **Local validation** | **COMPLETE** | See Validation Summary § below; identical on CI runner |
+| **GitHub CI** | **COMPLETE** | Repo `kranthik10/supastarter-expo` (public), workflow `.github/workflows/ci.yml` — run `33453674804` PASS in 4m4s (all steps ✓), previous `33453409645` PASS 3m11s; fixes: pnpm inferred version, Node 24 |
+| **EAS native build** | **DEFERRED** | `eas whoami` → `Not logged in`; `EAS_PROJECT_ID` placeholder `000…`; no Apple credentials — `eas build --profile development` not attempted per deferred instruction; see `docs/phase-2-milestone-3-eas-maestro-ci.md` §1 |
+| **Maestro execution** | **DEFERRED** | Requires development build; dev bundle ID fixed `com.mobilesaas.app` → `com.mobilesaas.app.dev` (`.maestro/config.yaml` + 5 flows, commit `6acb582`); 5 flows not executed — see `docs/phase-2-milestone-3-eas-maestro-ci.md` §3 |
+
+> **Note:** EAS/Maestro are **DEFERRED**, not failed — environmental prerequisites (Expo auth/project linking, Apple signing, CLI install) are pending. The original Milestone 3 blocked attempt (`716259d`) is preserved verbatim in `docs/phase-2-milestone-3-eas-maestro-ci.md` §§1–7; remediation (§8) fixes CI and Maestro config only.
 
 ---
 
@@ -127,36 +144,40 @@ All come from authenticated server state / validated membership.
 
 ---
 
-## Milestone 3: Operational Validation ⏳ NOT STARTED
+## Milestone 3: Operational Validation — CI COMPLETE, EAS/Maestro DEFERRED
 
-### 3.1 EAS Development Build
+> **CI COMPLETE**; **EAS native build** and **Maestro execution** are **DEFERRED** (see Phase 2 Overall Status above and `docs/phase-2-milestone-3-eas-maestro-ci.md` for full blocked evidence, which is preserved verbatim).
+
+### 3.1 EAS Development Build — DEFERRED
 
 - [ ] `eas build --profile development` executed
 - [ ] Installable development build produced
 
-### 3.2 Maestro
+### 3.2 Maestro — DEFERRED (requires development build)
 
 - [ ] Run existing flows against development build
 - [ ] Record pass/fail
 
-### 3.3 CI
+### 3.3 CI — COMPLETE
 
-- [ ] Push to repository
-- [ ] GitHub Actions workflow triggered
-- [ ] Real CI run verified
+- [x] Push to repository — `kranthik10/supastarter-expo` (public), `git push origin main`
+- [x] GitHub Actions workflow triggered — `CI` on `main`/`pull_request` (`ubuntu-latest`, pnpm inferred, Node 24)
+- [x] Real CI run verified — `33453674804` PASS (4m4s, all steps ✓), `33453409645` PASS (3m11s); see `docs/phase-2-milestone-3-eas-maestro-ci.md` §8
 
 ---
 
-## Validation Summary (Current)
+## Validation Summary (Current — 2026-09-01)
 
 ```bash
 pnpm typecheck   # PASS (26 tasks)
 pnpm lint        # PASS (14 tasks)
-pnpm test        # PASS (4 test files, 30 tests)
+pnpm test        # PASS (4 test files, 30 tests) — verified locally and on CI (ubuntu-latest)
 pnpm build       # PASS (14 tasks, expo export)
 ```
 
-**Test count:** 30 tests (was 12, added 18 RBAC unit tests)
+GitHub CI matches local: run `33453674804` PASS.
+
+**Test count:** 30 tests (was 12, added 18 RBAC unit tests) — all PASS locally and on GitHub Actions.
 
 ---
 
