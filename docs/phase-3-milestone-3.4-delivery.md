@@ -149,4 +149,6 @@ Protected. Verifies scope/permission, deletes the remote object, then marks the 
 - Implementation commit: `534d9a7` — `feat: complete phase 3.4 storage`.
 - Implementation GitHub Actions run: `33560147578` — completed successfully for head `534d9a7`.
 - Documentation closure commit: `19c3466` — `docs: close phase 3.4 storage delivery`.
-- Documentation-head GitHub Actions run: `33562014816` — completed successfully for head `19c3466`.
+- Documentation closure GitHub Actions run: `33562014816` — completed successfully for head `19c3466`.
+- Final evidence commit: `db706df` — `docs: record phase 3.4 ci result`.
+- Final-head GitHub Actions run: `33562346321` — completed successfully for head `db706df`.
