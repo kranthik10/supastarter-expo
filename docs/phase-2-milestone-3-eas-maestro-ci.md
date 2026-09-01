@@ -295,3 +295,130 @@ All local checks remain PASS, identical to Milestone 2 checkpoint `0dae428`.
 2. **Maestro:** Install CLI (`curl -Ls https://get.maestro.mobile.dev | bash`), install build on Booted iPhone 17 Pro (`xcrun simctl install booted <app>`), run `maestro test .maestro/flows/*.yaml`
 3. **CI:** Add GitHub remote and push, or `gh repo create` — then verify `gh run view` shows `validate` job PASS
 4. Re-run this doc with actual IDs/outputs and create `chore: validate eas maestro and ci` checkpoint
+
+---
+
+## 8. Remediation — 2026-09-01 — CI Validation (EAS/Maestro Deferred per instruction)
+
+**Scope of this remediation:** EAS and Maestro deliberately deferred (no `eas login`, no build, no `maestro` install). Focus was GitHub CI only plus safe Maestro config fix. Per instruction: `kranthik10/supastarter-expo` as canonical remote.
+
+### 8.1 GitHub Remote
+
+```bash
+$ git remote -v
+origin  https://github.com/kranthik10/supastarter-expo.git (fetch)
+origin  https://github.com/kranthik10/supastarter-expo.git (push)
+
+$ gh repo view kranthik10/supastarter-expo --json nameWithOwner
+{"nameWithOwner":"kranthik10/supastarter-expo","isPrivate":false}
+```
+
+Remote added via `git remote add origin https://github.com/kranthik10/supastarter-expo.git`. Repository did not exist on first check (`Repository not found`); created via `gh repo create kranthik10/supastarter-expo --public` then pushed `main`. **Not an arbitrary repo — developer-specified `kranthik10/supastarter-expo`.**
+
+### 8.2 CI Workflow Inspection & Fixes
+
+**Original CI blocker 1:** `pnpm/action-setup@v4` with `version: 10` vs `package.json: pnpm@11.24.0` → `ERR_PNPM_BAD_PM_VERSION` (run `33453279830`, `33453339078`). Fix: remove `version` key entirely and let action infer from `packageManager` field (`commit 854b664`).
+
+**Original CI blocker 2:** `pnpm@11.24.0 requires at least Node.js v22.13` but `actions/setup-node@v4` used `node-version: 20` → `ERR_UNKNOWN_BUILTIN_MODULE: node:sqlite` (run `33453374228`). Fix: bump `node-version` to `24` (`commit 4276710`).
+
+**Final `.github/workflows/ci.yml` after fixes:**
+
+```yaml
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request: { branches: [main] }
+concurrency: { group: ci-${{ github.ref }}, cancel-in-progress: true }
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4         # no version — inferred from packageManager
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm test
+      - run: pnpm build
+      - run: pnpm --filter @repo/database db:generate --dry-run (continue-on-error)
+```
+
+No secrets, no machine-specific assumptions. Workflow matches local `pnpm lint/typecheck/test/build`.
+
+### 8.3 CI Push & GitHub Actions Result
+
+```bash
+$ git push -u origin main  (commit 6acb582) → 33453339078 FAIL (pnpm version mismatch)
+$ git push (commit 854b664) → 33453374228 FAIL (Node 20 vs pnpm 11.24)
+$ git push (commit 4276710) → 33453409645 PASS
+```
+
+**Passing run — `33453409645` (`fix: bump CI node to 24 for pnpm 11.24`):**
+
+```
+✓ validate in 3m11s (ID 99688120201)
+  ✓ Set up job
+  ✓ Run actions/checkout@v4
+  ✓ Run pnpm/action-setup@v4   (inferred pnpm 11.24.0)
+  ✓ Run actions/setup-node@v4 (Node 24)
+  ✓ Run pnpm install --frozen-lockfile
+  ✓ Run pnpm lint
+  ✓ Run pnpm typecheck
+  ✓ Run pnpm test
+  ✓ Run pnpm build
+  ✓ DB generate check
+```
+Link: `https://github.com/kranthik10/supastarter-expo/actions/runs/33453409645`
+
+All four parity checks identical to local validation ran on `ubuntu-latest` and passed.
+
+### 8.4 Maestro Configuration Fix (safe, no CLI install)
+
+As authorized, fixed development bundle-ID mismatch without running Maestro:
+
+```diff
+- appId: com.mobilesaas.app
++ appId: com.mobilesaas.app.dev   # .maestro/config.yaml + 5 flows
+```
+
+Verified against `apps/mobile/app.config.ts`:
+
+```ts
+development: { bundleIdSuffix: '.dev' } → com.mobilesaas.app.dev
+preview:     { bundleIdSuffix: '.preview' } → com.mobilesaas.app.preview
+production:  { bundleIdSuffix: '' } → com.mobilesaas.app
+```
+
+Change applied in commit `6acb582` (`fix: align ci pnpm version and maestro dev bundle id`). Production ID preserved as comment in `config.yaml`. No flow logic rewritten. Flows still deferred (`BLOCKED — waiting for development build`) per instruction.
+
+### 8.5 Local Regression After Remediation
+
+```bash
+$ pnpm typecheck  → 26 successful
+$ pnpm lint       → 14 successful
+$ pnpm test       → 4 passed, 30 passed (30)
+$ pnpm build      → 14 successful, Exported: dist
+```
+
+Identical to checkpoint `0dae428` + `716259d`.
+
+### 8.6 Remediation Summary
+
+```
+EAS authentication:       DEFERRED (per instruction — not attempted)
+Expo project linking:     DEFERRED (requires eas login)
+Development build:        DEFERRED
+Simulator installation:   DEFERRED
+Maestro installation:     DEFERRED
+Maestro Flow 1:           DEFERRED — config fixed to com.mobilesaas.app.dev, not executed
+Maestro Flow 2:           DEFERRED
+Maestro Flow 3:           DEFERRED
+Maestro Flow 4:           DEFERRED
+Maestro Flow 5:           DEFERRED
+GitHub remote:            PASS (kranthik10/supastarter-expo, public, pushed)
+CI:                       PASS (run 33453409645, 3m11s, all steps ✓)
+Local validation:         PASS (typecheck/lint/test 30/build)
+```
+
