@@ -5,7 +5,9 @@
 **Phase 3.1 documentation closure:** `33daf39`
 **Phase 3.1 GitHub Actions:** `33539998678` — completed / success
 **Phase 3.2 implementation baseline:** `33daf39`
-**Status:** IMPLEMENTED locally — final commit/CI record pending
+**Status:** IMPLEMENTED + COMMITTED — ready for Milestone 3.3
+**Feature checkpoint commit:** `09e70cf` (`feat: complete phase 3.2 team and invitations`)
+**Feature GitHub Actions:** `33543880088` — completed / success
 
 ## IMPLEMENTED
 
@@ -91,8 +93,6 @@ None within Milestone 3.2 scope.
 
 ## FINAL CHECKPOINT
 
-- Feature commit: pending at the time this draft was written.
-- Documentation closure commit: pending.
-- Phase 3.2 GitHub Actions run: pending.
-
-The final closure patch must record the exact feature commit, closure commit, and GitHub Actions run with `completed / success` before this milestone is reported complete.
+- Feature checkpoint: `09e70cf` (`feat: complete phase 3.2 team and invitations`).
+- Feature GitHub Actions: `33543880088` — `completed` / `success` for head `09e70cf`.
+- This delivery record is closed in a follow-up documentation commit; the feature checkpoint remains the implementation baseline for Milestone 3.3.
