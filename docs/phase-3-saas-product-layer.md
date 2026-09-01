@@ -1,11 +1,12 @@
 # Phase 3 — SaaS Product Layer Architecture
 
-**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 implemented; remaining Phase 3 milestones are specification only
+**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5 implemented; remaining Phase 3 milestones are specification only
 **Historical baseline:** `5c1ceba` (Phase 2)
 **Phase 3.1 checkpoint:** `c0f54f7`; documentation closure `33daf39`; GitHub Actions `33539998678` PASS
 **Phase 3.2 active baseline:** `f7517ae`; GitHub Actions `33544316656` PASS
 **Phase 3.3 active implementation:** User Settings recorded in `docs/phase-3-milestone-3.3-delivery.md`
 **Phase 3.4 active implementation:** Storage recorded in `docs/phase-3-milestone-3.4-delivery.md`
+**Phase 3.5 active implementation:** Notifications recorded in `docs/phase-3-milestone-3.5-delivery.md`
 **Repository:** `kranthik10/supastarter-expo` (public, main)
 **Validation at historical baseline:** `typecheck: PASS` (26), `lint: PASS` (14), `test: PASS` (4 files, 30 tests), `build: PASS` (expo export), CI `33453674804` PASS
 **Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 CI `33544316656` PASS; Phase 3.3 local validation is recorded in `docs/phase-3-milestone-3.3-delivery.md`; Phase 3.4 local validation is recorded in `docs/phase-3-milestone-3.4-delivery.md`
@@ -33,7 +34,7 @@ Phase 3 delivers **primitives, not a demo app**: typed APIs, server-enforced rul
 | RBAC (`owner/admin/member`, `can()/assertCan()`, matrix) | COMPLETE (30 tests, 18 RBAC) | `packages/permissions`, `packages/types` |
 | Billing config (local Zustand, `plans` `free/pro/enterprise`) | STUB | `packages/billing` (no provider calls, no webhook) |
 | Storage (presigned upload + metadata + private access) | IMPLEMENTED (fake/not-configured provider; real R2 deferred) | `packages/storage`, `packages/api` |
-| Notifications (push stub) | STUB | `packages/notifications` |
+| Notifications (in-app, token registration, Expo provider seam) | IMPLEMENTED (fake/not-configured provider; real device delivery deferred) | `packages/notifications`, `packages/api`, mobile notification center |
 | Analytics (console provider) | STUB | `packages/analytics` |
 | CI (GitHub Actions, Node 24, pnpm 11.24) | COMPLETE | `.github/workflows/ci.yml`, runs `33453674804` PASS |
 | EAS (`eas.json` 3 profiles) + Maestro (5 flows, dev `appId` fixed) | DEFERRED | `apps/mobile/eas.json`, `.maestro/*`, `docs/phase-2-milestone-3-eas-maestro-ci.md` |
@@ -198,8 +199,10 @@ The 16 tables from `packages/database/src/schema.ts` at `5c1ceba` remain exactly
 | Storage | `files.status enum('pending','ready','deleted') default 'pending'` | `addColumn` | Implemented in migration `0004_real_boomerang.sql`; presign→HEAD-confirm→delete lifecycle |
 | Storage | `files.expires_at timestamptz nullable` + `files.updated_at timestamptz not null default now()` | `addColumn` | Pending reservation/orphan cleanup and lifecycle timestamps |
 | Storage | `files.user_id`, `files.organization_id`, `files.status` indexes | `createIndex` | File metadata/quota hot paths |
-| Notifications | `notifications.category text nullable` | `addColumn` | Category routing |
-| Notifications | `push_tokens.invalidated_at timestamptz nullable` | `addColumn` | Token lifecycle |
+| Notifications | `notifications.category text not null default 'system'` | `addColumn` | Finite category routing; safe default for existing rows |
+| Notifications | `notifications.organization_id text nullable` + `notifications_organization_id_organizations_id_fk ... ON DELETE SET NULL` | `addColumn + FK` | Organization context without making it an authorization grant |
+| Notifications | `push_tokens.invalidated_at timestamptz nullable` | `addColumn` | Token lifecycle and provider invalidation |
+| Notifications | `notifications(user_id, read_at, created_at)`, `notifications(organization_id)`, `push_tokens(device_id)`, `push_tokens(user_id, invalidated_at)` | `createIndex` | Bounded list/unread/token hot paths |
 | Users | `users.avatar_url text nullable` (alias of `image`, normalized) | **REJECTED** | Existing `users.image` is canonical; private avatar upload stores an opaque key there |
 | Users | `users.deleted_at timestamptz nullable` | **DEFERRED** | Auth-aware soft-delete/grace lifecycle not implemented |
 | Users | `user_preferences` (new) | `createTable` | Implemented in Phase 3.3 for user preferences |
@@ -293,7 +296,7 @@ Sign up/in → Better Auth handler (Hono → DB sessions) → Set-Cookie / Beare
 - **Profile:** `settings.getProfile` / `settings.updateProfile` read/write only the authenticated user's `users.name` and validated remote `users.image` reference. `users.image` remains canonical; no `avatar_url` or R2 upload. Direct email change is rejected/deferred to Better Auth verification flow.
 - **Preferences:** `settings.getPreferences` / `updatePreferences` lazily persist `user_preferences` with finite `en|de` locale, `system|light|dark` theme, notification preference flags, and paired strict `HH:MM` quiet hours.
 - **Password/security:** Better Auth 1.7.2's official `changePassword` endpoint is wrapped by the mobile auth client; no password SQL/hash handling is added. Existing session rows are exposed through user-scoped settings wrappers without returning tokens.
-- **Session/device management:** `settings.listSessions`, `revokeSession`, and `revokeOtherSessions` operate on Better Auth's existing `sessions` table, filter by `ctx.user.id`, and omit tokens. Devices/Expo push remain Phase 3.5.
+- **Session/device management:** `settings.listSessions`, `revokeSession`, and `revokeOtherSessions` operate on Better Auth's existing `sessions` table, filter by `ctx.user.id`, and omit tokens. Device/install and Expo push registration are implemented in Phase 3.5.
 - **Account deletion:** `settings.deleteAccount` performs immediate, ownership-guarded deletion through the existing Better Auth Drizzle tables after deleting sessions. A sole owner receives `PRECONDITION_FAILED: ownership_transfer_required`; delayed soft-delete/hard-delete grace processing is deferred.
 
 **Guardrail:** `apps/mobile/app/(app)/_layout.tsx` gate (`hydrated && user`) stays; no route bypasses it.
@@ -517,46 +520,65 @@ Mobile — uploadAvatar()/storage helper
 
 ## 16. Notification architecture
 
-**Stack (Phase 0 ADR-007 preserved):** `expo-notifications` (device) → `expo` provider → `push_tokens` + `devices` + `notifications` tables → `Expo Push Service → APNs/FCM`. No Firebase direct.
+**Status:** Implemented in Milestone 3.5. The server is authoritative for notification rows, token associations, preference enforcement, and provider outcomes. Real native device delivery remains deferred until an EAS/native build and provider credentials exist.
+
+**Stack (Phase 0 ADR-007 corrected):** `expo-notifications` (client registration) → protected tRPC procedures → server-only `packages/notifications/server.ts` → Expo Push Service → APNs/FCM. In-app history is independent of push success.
+
+**Package boundary:**
+
+- `@repo/notifications` is client-safe and contains Expo permission/token registration helpers plus shared types.
+- `@repo/notifications/policy` is pure shared validation for Expo tokens, finite categories, safe routes, and cursors.
+- `@repo/notifications/server` is server-only and contains the Expo, fake, and not-configured providers plus persistence/delivery service. It is never imported by mobile.
 
 **Registration:**
 
 ```
-requestPermissions() → getPushToken() (expo-notifications) → registerDevice({ token, platform, appVersion })
-  server: upsert devices(userId, platform), upsert pushTokens(deviceId, userId, token, provider='expo'),
-          invalidate any pushTokens for same user with same deviceId but different token (set invalidatedAt)
+user opts in → requestPermissions() → getExpoPushTokenAsync(projectId)
+  → protected notifications.registerPushToken({ token, platform, installationId, appVersion })
+  server: derive userId from ctx.user.id → validate Expo token → transactionally upsert device/token
+          → invalidate active tokens for the same user/install when the token rotates
 ```
+
+`devices.id` is a locally persisted app-installation association key. It is not claimed to be a permanent physical hardware identifier. A device/install cannot be silently reassigned across users. `notifications.unregisterPushToken` invalidates only the authenticated user’s installation association and is attempted before mobile logout.
 
 **Token lifecycle:**
 
-- `push_tokens(token unique)` dedups reinstall.
-- `invalidatedAt` marks replaced tokens; scheduled sender skips invalidated.
-- On `Expo` provider `DeviceNotRegistered` error, server sets `invalidatedAt=now()` for that token (lazy).
+- `push_tokens.token` remains globally unique for deduplication.
+- `invalidated_at` marks rotated, logged-out, or provider-invalid tokens.
+- Delivery selects only `invalidated_at IS NULL` rows owned by the notification recipient.
+- Immediate Expo `DeviceNotRegistered` ticket errors invalidate the corresponding token. Receipt reconciliation and scheduled workers are deferred.
 
-**Preferences (`user_preferences` + org override optional):**
+**Preferences:**
 
-```
-userPreferences: { marketing: boolean, teamInvites: boolean, billingAlerts: boolean, quietHours: null }
-```
+The existing Phase 3.3 `user_preferences` table is the only preference source. `billing_alerts=false` skips billing push while preserving the in-app row. `invite_emails` remains an email preference and does not erase or suppress in-app history. Quiet-hour values remain stored as strict paired `HH:MM` fields, but enforcement is deferred because no user timezone is modeled.
 
-Toggled via `notifications.updatePreferences`; server checks preferences before writing `notifications` rows or sending push.
+**Categories:**
 
-**Categories (server `notifications.category`):**
-
-- `invite.received`, `invite.accepted`, `member.removed`, `billing.trial_ending`, `billing.past_due`, `storage.ready` (future), etc.
+The V1 server category union is finite: `team`, `billing`, `security`, and `system`. Categories are not arbitrary client strings. A trusted server event currently proves the path by creating a `team` notification for the inviter after invitation acceptance; no client endpoint can create arbitrary notifications or send a push.
 
 **Deep links:**
 
-- Every push payload `data: { route: '/(app)/team' | '/(app)/billing' | '/invite/<token>' }` → `useDeepLinks()` in `apps/mobile/app/_layout.tsx` routes via `expo-linking` scheme `supastarter` / variant schemes.
+Notification metadata is constrained to `{ route?: string; orgId?: string }` and routes are allowlisted (`/home`, `/team`, `/billing`, `/settings`, `/notifications`, `/invitations`, and safe organization paths). Raw invitation tokens, reset tokens, sessions, presigned URLs, secrets, and PII-rich payloads are rejected. Taps are validated again by the client before routing; the existing `/invite/[token]` flow remains separate.
 
-**Foreground/background behavior (Expo managed):**
+**Delivery semantics:**
 
-- Foreground: `addNotificationReceivedListener` shows in-app banner (`useToast` + `notifications.list` unread count); no system alert unless `shouldShowAlert: true`.
-- Background/killed: system tray. Tap → `addNotificationResponseReceivedListener` → deep link.
+```
+trusted server event
+      ↓
+insert notifications row
+      ↓
+read user_preferences and active push tokens
+      ↓
+attempt external provider outside the DB insert transaction
+      ↓
+return persisted / attempted / accepted / failed / invalidated outcome
+```
 
-**In-app history:** `notifications.list` (protected, index `userId`) + `notifications.markRead`. Unread badge in `(app)/(tabs)` header.
+Provider acceptance is not device delivery. The fake provider is used for local verification; the not-configured provider reports `not_configured` rather than false acceptance. Provider failures never remove the persisted in-app row.
 
-**Organization scoping:** push is user-scoped (`notifications.userId`), but server fans out org-wide events by querying `organizationMembers(userId in org)`.
+**In-app history:**
+
+Protected procedures are `notifications.list` (bounded cursor pagination, max 100), `notifications.getUnreadCount`, `notifications.markRead`, and `notifications.markAllRead`. Every query and update derives `user_id` from `ctx.user.id`; organization context is descriptive and does not bypass user isolation. The mobile tab provides list, unread count, read state, mark-all-read, safe navigation, loading/error/empty states, and load-more pagination.
 
 ---
 

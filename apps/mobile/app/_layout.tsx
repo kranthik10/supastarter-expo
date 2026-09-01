@@ -1,6 +1,6 @@
 import '../lib/i18n';
 import React, { useEffect } from 'react';
-import { Stack } from 'expo-router';
+import { Stack, router } from 'expo-router';
 import { Appearance } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -9,7 +9,8 @@ import { useAuth } from '@repo/auth';
 import { useOrgs } from '@repo/organizations';
 import { useBilling } from '@repo/billing';
 import { changeLanguage } from '@/lib/i18n';
-import { useDeepLinks } from '@/lib/linking';
+import { useDeepLinks, storePendingLink } from '@/lib/linking';
+import { addNotificationResponseListener, getLastNotificationData, type SafeNotificationData } from '@repo/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -27,6 +28,24 @@ export default function RootLayout() {
   const hydrateSettings = useSettings((s) => s.hydrate);
 
   useDeepLinks();
+
+  useEffect(() => {
+    if (!hydrated || !settingsHydrated) return;
+    const handleNotification = (data: SafeNotificationData) => {
+      if (!data.route) return;
+      if (!useAuth.getState().user) {
+        void storePendingLink(data.route);
+        (router.replace as unknown as (path: string) => void)('/sign-in');
+        return;
+      }
+      (router.push as unknown as (path: string) => void)(data.route);
+    };
+    const sub = addNotificationResponseListener(handleNotification);
+    void getLastNotificationData().then((data) => {
+      if (data) handleNotification(data);
+    });
+    return () => sub.remove();
+  }, [hydrated, settingsHydrated]);
 
   useEffect(() => {
     void Promise.all([hydrateAuth(), hydrateOrgs(), hydrateBilling(), hydrateSettings()]);

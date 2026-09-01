@@ -218,8 +218,9 @@ export const pushTokens = pgTable('push_tokens', {
     .references(() => users.id, { onDelete: 'cascade' }),
   token: text('token').notNull().unique(),
   provider: text('provider').notNull().default('expo'),
+  invalidatedAt: timestamp('invalidated_at', { withTimezone: true }),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+}, (t) => [index('push_tokens_device_idx').on(t.deviceId), index('push_tokens_user_active_idx').on(t.userId, t.invalidatedAt)]);
 
 export const files = pgTable(
   'files',
@@ -248,13 +249,19 @@ export const notifications = pgTable(
     userId: text('user_id')
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
+    organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'set null' }),
+    category: text('category').notNull().default('system'),
     title: text('title').notNull(),
     body: text('body'),
     data: jsonb('data'),
     readAt: timestamp('read_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('notifs_user_idx').on(t.userId)]
+  (t) => [
+    index('notifs_user_idx').on(t.userId),
+    index('notifs_user_read_created_idx').on(t.userId, t.readAt, t.createdAt),
+    index('notifs_org_idx').on(t.organizationId),
+  ]
 );
 
 export const auditLogs = pgTable(

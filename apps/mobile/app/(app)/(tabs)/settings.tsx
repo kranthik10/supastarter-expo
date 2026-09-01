@@ -11,6 +11,7 @@ import { useTheme } from '@/lib/use-theme';
 import { useAuth } from '@repo/auth';
 import { useSettings, type ThemeMode, type Locale } from '@/lib/settings-store';
 import { uploadAvatar } from '@/lib/storage/files';
+import { registerPushNotifications, unregisterPushNotifications } from '@/lib/notifications';
 import { trpc } from '@repo/api';
 
 type SessionSummary = {
@@ -41,6 +42,7 @@ export default function Settings() {
   const [inviteEmails, setInviteEmails] = useState(true);
   const [billingAlerts, setBillingAlerts] = useState(true);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [pushLoading, setPushLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
@@ -132,6 +134,20 @@ export default function Settings() {
       showError(error);
     } finally {
       setAvatarLoading(false);
+    }
+  };
+
+  const enablePush = async () => {
+    setPushLoading(true);
+    try {
+      const result = await registerPushNotifications();
+      if (result === 'registered') Alert.alert(t('settings.pushRegistered'));
+      else if (result === 'permission_denied') Alert.alert(t('settings.pushPermissionDenied'));
+      else Alert.alert(t('settings.pushUnavailable'));
+    } catch (error) {
+      showError(error);
+    } finally {
+      setPushLoading(false);
     }
   };
 
@@ -281,6 +297,7 @@ export default function Settings() {
         <PreferenceRow label={t('settings.billingAlerts')} value={billingAlerts} disabled={preferenceLoading} onChange={(value) => { setBillingAlerts(value); void updatePreference({ billingAlerts: value }); }} />
         <PreferenceRow label={t('settings.marketingOptIn')} value={marketingOptIn} disabled={preferenceLoading} onChange={(value) => { setMarketingOptIn(value); void updatePreference({ marketingOptIn: value }); }} />
         <Text variant="small" muted>{t('settings.quietHoursNote')}</Text>
+        <Button label={t('settings.enablePush')} onPress={() => void enablePush()} loading={pushLoading} variant="secondary" full />
       </Card>
 
       <Text variant="h3" style={styles.section}>{t('settings.security')}</Text>
@@ -316,7 +333,12 @@ export default function Settings() {
           label={t('common.signOut')}
           variant="secondary"
           icon={<LogOut color={theme.text} size={18} />}
-          onPress={() => { void signOut().then(() => router.replace('/')); }}
+          onPress={() => {
+            void unregisterPushNotifications()
+              .catch(() => undefined)
+              .then(() => signOut())
+              .then(() => router.replace('/'));
+          }}
           full
         />
         <Text variant="small" muted align="center">{t('settings.version')} {version}</Text>

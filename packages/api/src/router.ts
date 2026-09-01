@@ -3,8 +3,8 @@ import { z } from 'zod';
 import superjson from 'superjson';
 import type { ApiContext } from './context';
 import { getDb } from '@repo/database';
-import { auditLogs, files, invitations, organizations, organizationMembers, sessions, subscriptions, userPreferences, users } from '@repo/database';
-import { and, desc, eq, isNull, lte, ne, sql } from 'drizzle-orm';
+import { auditLogs, devices, files, invitations, organizations, organizationMembers, pushTokens, sessions, subscriptions, userPreferences, users, notifications as notificationRows } from '@repo/database';
+import { and, desc, eq, isNull, lte, lt, ne, or, sql } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import { assertCan } from '@repo/permissions';
 import { getEntitlement, listEntitlements, syncEntitlementsForPlan } from '@repo/billing/entitlements.server';
@@ -25,6 +25,8 @@ import { getInvitationEmailProvider } from './email';
 import { cleanupExpiredFiles, getOrganizationStorageUsage } from './storage-service';
 import { getStorageProvider, StorageProviderError, type StorageProvider } from '@repo/storage/server';
 import { buildObjectKey, canConfirmFile, canReserveStorage, DOWNLOAD_URL_EXPIRY_SECONDS, storageLimitBytes, UPLOAD_URL_EXPIRY_SECONDS, validateUploadMetadata } from '@repo/storage/policy';
+import { createNotification } from '@repo/notifications/server';
+import { decodeNotificationCursor, encodeNotificationCursor, isExpoPushToken, notificationCategories, parseNotificationData } from '@repo/notifications/policy';
 import {
   canDeleteAccount,
   defaultUserPreferences,
@@ -114,6 +116,41 @@ const storageIntentSchema = z
     purpose: z.enum(['avatar']).optional(),
   })
   .strict();
+
+const pushTokenSchema = z
+  .object({
+    token: z.string().trim().min(1).max(300).refine(isExpoPushToken, 'invalid_expo_push_token'),
+    platform: z.enum(['ios', 'android']),
+    installationId: z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/),
+    appVersion: z.string().trim().max(64).optional(),
+  })
+  .strict();
+const notificationListSchema = z
+  .object({
+    limit: z.number().int().min(1).max(100).default(20),
+    cursor: z.string().min(1).optional(),
+  })
+  .strict();
+const notificationIdSchema = z.object({ notificationId: z.string().min(1) }).strict();
+
+function safeNotificationData(value: unknown): Record<string, string> | null {
+  const parsed = parseNotificationData(value);
+  if (parsed === null) return null;
+  return parsed as Record<string, string>;
+}
+
+function publicNotification(row: typeof notificationRows.$inferSelect) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    category: (notificationCategories as readonly string[]).includes(row.category) ? row.category : 'system',
+    title: row.title,
+    body: row.body,
+    data: safeNotificationData(row.data),
+    readAt: row.readAt,
+    createdAt: row.createdAt,
+  };
+}
 
 function toPublicPreferences(row: any): UserPreferences {
   return {
@@ -653,13 +690,27 @@ export const appRouter = router({
               targetId: invitation.id,
               metadata: { email: invitation.email, role: invitation.role, tokenHash: hashInvitationToken(input.token) },
             });
-            return { kind: 'accepted' as const, organizationId: invitation.organizationId, role: invitation.role };
+            return { kind: 'accepted' as const, organizationId: invitation.organizationId, role: invitation.role, invitedBy: invitation.invitedBy };
           } catch (error) {
             if (isUniqueViolation(error)) reasonError('already_member', 'CONFLICT');
             throw error;
           }
         });
         if (result.kind === 'expired') reasonError('invitation_expired');
+        if (result.kind === 'accepted') {
+          try {
+            await createNotification(db, {
+              userId: result.invitedBy,
+              organizationId: result.organizationId,
+              category: 'team',
+              title: 'Invitation accepted',
+              body: 'A team invitation was accepted.',
+              data: { route: '/team', orgId: result.organizationId },
+            });
+          } catch {
+            // Invitation acceptance remains authoritative even if notification delivery/persistence is unavailable.
+          }
+        }
         return { ok: true as const, organizationId: result.organizationId, role: result.role };
       }),
 
@@ -774,6 +825,114 @@ export const appRouter = router({
         if (result.kind === 'expired') reasonError('invitation_expired');
         return { ok: true as const };
       }),
+  }),
+
+  notifications: router({
+    registerPushToken: protectedProcedure
+      .input(pushTokenSchema)
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const userId = ctx.user!.id;
+        const now = new Date();
+        return db.transaction(async (tx: any) => {
+          const [existingDevice] = await tx.select().from(devices).where(eq(devices.id, input.installationId)).limit(1);
+          if (existingDevice && existingDevice.userId !== userId) {
+            throw new TRPCError({ code: 'CONFLICT', message: 'device_not_owned' });
+          }
+
+          const [tokenOwner] = await tx.select().from(pushTokens).where(eq(pushTokens.token, input.token)).limit(1);
+          if (tokenOwner && tokenOwner.userId !== userId) {
+            throw new TRPCError({ code: 'CONFLICT', message: 'push_token_owned_by_other_user' });
+          }
+          if (!existingDevice) {
+            await tx.insert(devices).values({ id: input.installationId, userId, platform: input.platform, appVersion: input.appVersion ?? null });
+          } else {
+            await tx.update(devices).set({ platform: input.platform, appVersion: input.appVersion ?? null }).where(and(eq(devices.id, input.installationId), eq(devices.userId, userId)));
+          }
+
+          await tx
+            .update(pushTokens)
+            .set({ invalidatedAt: now })
+            .where(and(eq(pushTokens.userId, userId), eq(pushTokens.deviceId, input.installationId), ne(pushTokens.token, input.token), isNull(pushTokens.invalidatedAt)));
+
+          if (tokenOwner) {
+            await tx
+              .update(pushTokens)
+              .set({ deviceId: input.installationId, provider: 'expo', invalidatedAt: null })
+              .where(and(eq(pushTokens.id, tokenOwner.id), eq(pushTokens.userId, userId)));
+          } else {
+            await tx.insert(pushTokens).values({ id: createId(), deviceId: input.installationId, userId, token: input.token, provider: 'expo', invalidatedAt: null });
+          }
+          return { ok: true as const, deviceId: input.installationId };
+        });
+      }),
+
+    unregisterPushToken: protectedProcedure
+      .input(z.object({ installationId: z.string().trim().min(8).max(128).regex(/^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}$/), token: z.string().trim().min(1).max(300).optional() }).strict())
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [device] = await db.select({ userId: devices.userId }).from(devices).where(eq(devices.id, input.installationId)).limit(1);
+        if (device && device.userId !== ctx.user!.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'device_forbidden' });
+        const conditions = [eq(pushTokens.userId, ctx.user!.id), eq(pushTokens.deviceId, input.installationId), isNull(pushTokens.invalidatedAt)];
+        if (input.token) conditions.push(eq(pushTokens.token, input.token));
+        const invalidated = await db.update(pushTokens).set({ invalidatedAt: new Date() }).where(and(...conditions)).returning({ id: pushTokens.id });
+        return { ok: true as const, invalidatedCount: invalidated.length };
+      }),
+
+    list: protectedProcedure
+      .input(notificationListSchema)
+      .query(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const cursor = input.cursor ? decodeNotificationCursor(input.cursor) : null;
+        if (input.cursor && !cursor) throw new TRPCError({ code: 'BAD_REQUEST', message: 'notification_cursor_invalid' });
+        const conditions = [eq(notificationRows.userId, ctx.user!.id)];
+        if (cursor) {
+          const cursorDate = new Date(cursor.createdAt);
+          conditions.push(or(lt(notificationRows.createdAt, cursorDate), and(eq(notificationRows.createdAt, cursorDate), lt(notificationRows.id, cursor.id)))!);
+        }
+        const rows = await db
+          .select()
+          .from(notificationRows)
+          .where(and(...conditions))
+          .orderBy(desc(notificationRows.createdAt), desc(notificationRows.id))
+          .limit(input.limit + 1);
+        const hasMore = rows.length > input.limit;
+        const page = hasMore ? rows.slice(0, input.limit) : rows;
+        const last = page[page.length - 1];
+        return {
+          items: page.map(publicNotification),
+          nextCursor: hasMore && last ? encodeNotificationCursor({ id: last.id, createdAt: last.createdAt }) : null,
+        };
+      }),
+
+    getUnreadCount: protectedProcedure.query(async ({ ctx }) => {
+      const db = ctx.db ?? getDb();
+      const [result] = await db.select({ count: sql<number>`count(*)` }).from(notificationRows).where(and(eq(notificationRows.userId, ctx.user!.id), isNull(notificationRows.readAt)));
+      return { count: Number(result?.count ?? 0) };
+    }),
+
+    markRead: protectedProcedure
+      .input(notificationIdSchema)
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [updated] = await db
+          .update(notificationRows)
+          .set({ readAt: new Date() })
+          .where(and(eq(notificationRows.id, input.notificationId), eq(notificationRows.userId, ctx.user!.id)))
+          .returning();
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'notification_not_found' });
+        return { ok: true as const, notification: publicNotification(updated) };
+      }),
+
+    markAllRead: protectedProcedure.mutation(async ({ ctx }) => {
+      const db = ctx.db ?? getDb();
+      const updated = await db
+        .update(notificationRows)
+        .set({ readAt: new Date() })
+        .where(and(eq(notificationRows.userId, ctx.user!.id), isNull(notificationRows.readAt)))
+        .returning({ id: notificationRows.id });
+      return { ok: true as const, updatedCount: updated.length };
+    }),
   }),
 
   storage: router({
