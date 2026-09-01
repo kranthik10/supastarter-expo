@@ -35,7 +35,7 @@ Phase 3 delivers **primitives, not a demo app**: typed APIs, server-enforced rul
 | Billing config (local Zustand, `plans` `free/pro/enterprise`) | STUB | `packages/billing` (no provider calls, no webhook) |
 | Storage (presigned upload + metadata + private access) | IMPLEMENTED (fake/not-configured provider; real R2 deferred) | `packages/storage`, `packages/api` |
 | Notifications (in-app, token registration, Expo provider seam) | IMPLEMENTED (fake/not-configured provider; real device delivery deferred) | `packages/notifications`, `packages/api`, mobile notification center |
-| Analytics (console provider) | STUB | `packages/analytics` |
+| Analytics (typed catalog, consent, PostHog seams) | IMPLEMENTED (no-op/fake by default; external ingestion depends on configuration) | `packages/analytics`, app root lifecycle, API server events |
 | CI (GitHub Actions, Node 24, pnpm 11.24) | COMPLETE | `.github/workflows/ci.yml`, runs `33453674804` PASS |
 | EAS (`eas.json` 3 profiles) + Maestro (5 flows, dev `appId` fixed) | DEFERRED | `apps/mobile/eas.json`, `.maestro/*`, `docs/phase-2-milestone-3-eas-maestro-ci.md` |
 
@@ -584,41 +584,41 @@ Protected procedures are `notifications.list` (bounded cursor pagination, max 10
 
 ## 17. Analytics architecture
 
-**Abstraction preserved:** `packages/analytics` exposes `track/screen/identify/reset` only. No screen imports PostHog directly. Provider is swapped via `setAnalyticsProvider()` at app boot from `EXPO_PUBLIC_POSTHOG_KEY`.
+**Status:** Implemented in Milestone 3.6. Analytics is a typed, privacy-sanitized, provider-independent facade. The client default is no-op until server consent is loaded; PostHog client ingestion uses only the intentionally public project key. A separate server subpath uses `POSTHOG_SERVER_KEY` only for selected authoritative events.
 
-```ts
-// packages/analytics — no new API in Phase 3, taxonomy defined below
-analytics.track(name, props);   // props: AnalyticsEvent (string|number|boolean|undefined only)
-analytics.screen(name, props);
-analytics.identify(userId, traits);
-```
+**Package boundary:**
 
-**Event naming convention (lower_snake, verb_subject):**
+- `@repo/analytics` — client-safe facade, event catalog, property/route sanitation, no-op/fake provider, and fetch-based PostHog client provider.
+- `@repo/analytics/policy` — pure event/property/screen validation.
+- `@repo/analytics/server` — server-only PostHog provider/factory; no React Native or database imports reach the client root.
 
-```
-auth.signed_up, auth.signed_in, auth.signed_out
-org.created, org.updated, org.deleted, org.ownership_transferred
-invitation.created, invitation.accepted, invitation.revoked
-member.removed, member.role_updated
-billing.checkout_started, billing.checkout_completed, billing.portal_opened, billing.trial_started
-storage.upload_started, storage.upload_confirmed, storage.delete
-notifications.registered, notifications.preference_updated
-settings.profile_updated, settings.preferences_updated, settings.account_deleted
-```
+**Event naming convention:** lower_snake_case, product-level `verb_subject` names. V1 includes `user_signed_in`, `user_signed_up`, `user_signed_out`, `organization_created`, `invitation_accepted`, `notification_opened`, `notification_marked_read`, `push_permission_changed`, `settings_updated`, `theme_changed`, `locale_changed`, `screen_viewed`, `organization_switched`, `storage_upload_completed`, `billing_screen_viewed`, `plan_selected`, and `checkout_requested`.
 
-**Common props:** `user_id` (hashed in provider, not raw email), `organization_id`, `plan`, `role`, `platform`, `app_variant`, `app_version`. No free-form `metadata` blob; each event's props are declared.
+**Typed properties:** each event has a declared scalar property shape. There is no arbitrary metadata object. Notification events use category and optional opaque organization ID, storage events use scope/MIME/size buckets, settings events use only the changed field, and billing events represent intent rather than payment success.
 
-**Identity lifecycle:**
+**Privacy policy:**
 
-- `anonymous → authenticated`: on `signed_up`/`signed_in`, call `identify(user.id, { email, name })` and `analytics.identify` for PostHog person; attach `organization_id` after `org.created`/`invite.accepted`.
-- `organization_id` is set via `analytics.identify(userId, { organization_id: activeOrgId })` or `analytics.track(..., { organization_id })` — not trusted from client storage alone.
-- `reset()` on `signed_out`.
+- Raw email tracking: disabled.
+- Raw full-name tracking: disabled.
+- Identify distinct ID: authenticated internal user ID only.
+- Allowed identify traits: locale, theme, plan, app variant, and app version.
+- Forbidden properties include password, token, access/refresh token, authorization, cookie, secret, API key, presigned/upload/download URL, invitation token, email, name, phone, and address.
+- Nested/non-scalar/unknown event properties are rejected before provider invocation. This is a lightweight guardrail, not a complete legal/privacy review.
 
-**Privacy:**
+**Consent:** `user_preferences.analytics_enabled` is distinct from `marketing_opt_in`. The app loads consent from the authenticated server before identifying/capturing. Disabled analytics makes capture, identify, group, and screen no-ops and resets provider identity. Preference-load failure keeps analytics disabled.
 
-- Never track raw `token`, `passwordHash`, `provider_token`, or full email in props (hash or omit).
-- `emailVerified` is boolean, not email string in analytics.
-- Dev: console provider; prod: PostHog host `EXPO_PUBLIC_POSTHOG_HOST` (default `us.posthog.com`), key via env. `track` is no-op if key missing.
+**Identity and organization lifecycle:**
+
+- Root app lifecycle consumes the transient Better Auth sign-in/sign-up marker only after consent is loaded.
+- Logout/user changes reset identity; the next user is loaded independently.
+- Active organization is exposed through provider-independent `group('organization', organizationId)`. Organization switching updates the group and emits only `organization_switched` with the opaque organization ID.
+- Server-authoritative `organization_created` and `invitation_accepted` events are emitted after successful API operations. Client code does not duplicate those logical events.
+
+**Screen tracking:** Expo Router pathname changes are converted at the root boundary to logical names (`home`, `team`, `billing`, `settings`, `notifications`, `organization`, `invite`, `auth`, `onboarding`, `assistant`, `unknown`). Dynamic invitation tokens, signed URLs, and query strings are discarded.
+
+**Failure policy:** client and server provider failures are swallowed and never fail or rollback product operations. Missing PostHog configuration selects a no-op provider. Provider acceptance is not treated as guaranteed ingestion or user delivery.
+
+**Out of scope:** analytics event database/warehouse, ETL, attribution, experimentation, feature flags, and Phase 3.7 Monitoring/Sentry.
 
 ---
 
@@ -708,7 +708,7 @@ app/(app)/assistant.tsx, organization/[slug].tsx
 | **DB constraints** | Unique indexes already | Partial unique `(orgId,email) where status='pending'` for invites; `check` on status+`trial_ends_at`; `entitlements.unique(org,feature)` |
 | **Transactions** | Single inserts | Every multi-write (`accept`, `transferOwnership`, webhook upsert) in a single Drizzle transaction + `audit_logs` |
 | **Secrets** | Public/private split in `packages/config` | No new secret reaches bundle; `R2_*`, `STRIPE_SECRET_KEY`, `REVENUECAT_SECRET_KEY`, webhook secrets server-only; CI `db:generate --dry-run` guards migration drift |
-| **PII** | `emailVerified` pattern | Sentry never tags raw email/token; audit logs keep token hash; analytics props hash IDs |
+| **PII** | `emailVerified` pattern | Sentry never tags raw email/token; audit logs keep token hash; analytics sends only sanitized internal IDs and safe metadata |
 
 **Hardest invariant:** the mobile `userId`/`role`/`organizationId` is *never* trusted. Server re-derives membership per request.
 
@@ -898,7 +898,7 @@ Phase 3 is Done when **all** of the following are true on `main` at a single che
 | ADR-011 | Entitlements (org-scoped feature gates) | Proposed (Phase 3) | 2026-09-01 |
 | ADR-012 | Invitations lifecycle + ownership transfer | Proposed (Phase 3) | 2026-09-01 |
 | ADR-013 | Storage hardening (scoped presign + confirm) | Proposed (Phase 3) | 2026-09-01 |
-| ADR-014 | Analytics taxonomy + identity lifecycle | Proposed (Phase 3) | 2026-09-01 |
+| ADR-014 | Analytics taxonomy + consent + provider boundaries | Accepted and implemented (Phase 3.6) | 2026-09-02 |
 | ADR-015 | Monitoring boundaries + PII guardrails | Proposed (Phase 3) | 2026-09-01 |
 | ADR-016 | Production hardening (rate limit + idempotency + webhook HMAC) | Proposed (Phase 3) | 2026-09-01 |
 

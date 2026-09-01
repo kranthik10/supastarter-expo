@@ -1,0 +1,1 @@
+ALTER TABLE "user_preferences" ADD COLUMN "analytics_enabled" boolean DEFAULT true NOT NULL;

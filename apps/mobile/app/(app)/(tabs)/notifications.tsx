@@ -7,6 +7,7 @@ import { Badge, Button, Card, ListRow, Screen, Text } from '@repo/ui';
 import { trpc } from '@repo/api';
 import { useAuth } from '@repo/auth';
 import { parseNotificationData, type NotificationCategory } from '@repo/notifications/policy';
+import { analytics } from '@repo/analytics';
 import { useTheme } from '@/lib/use-theme';
 import { useTranslation } from 'react-i18next';
 
@@ -62,8 +63,12 @@ export default function Notifications() {
 
   const items = (listQuery.data?.pages.flatMap((page) => page.items) ?? []) as NotificationItem[];
   const openNotification = (item: NotificationItem) => {
-    if (!isRead(item)) void markReadMutation.mutateAsync(item.id).catch(() => undefined);
     const data = parseNotificationData(item.data);
+    analytics.capture('notification_opened', { category: item.category, ...(item.organizationId ? { organization_id: item.organizationId } : {}) });
+    if (!isRead(item)) {
+      analytics.capture('notification_marked_read', { category: item.category, ...(item.organizationId ? { organization_id: item.organizationId } : {}) });
+      void markReadMutation.mutateAsync(item.id).catch(() => undefined);
+    }
     if (data?.route) (router.push as unknown as (path: string) => void)(data.route);
   };
 

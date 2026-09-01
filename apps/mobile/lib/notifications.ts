@@ -1,5 +1,6 @@
 import Constants from 'expo-constants';
-import { getPushToken, requestPermissions, type PushToken } from '@repo/notifications';
+import { getPushToken, requestPermissions, canRegisterPush, type PushToken } from '@repo/notifications';
+import { analytics } from '@repo/analytics';
 import { trpc } from '@repo/api';
 import { storage } from './storage';
 
@@ -17,9 +18,16 @@ export async function getInstallationId(): Promise<string> {
 
 export async function registerPushNotifications(): Promise<'registered' | 'permission_denied' | 'unavailable'> {
   const granted = await requestPermissions();
-  if (!granted) return 'permission_denied';
+  if (!granted) {
+    const status = canRegisterPush() ? 'denied' : 'unavailable';
+    analytics.capture('push_permission_changed', { status });
+    return status === 'denied' ? 'permission_denied' : 'unavailable';
+  }
   const token = await getPushToken();
-  if (!token) return 'unavailable';
+  if (!token) {
+    analytics.capture('push_permission_changed', { status: 'unavailable' });
+    return 'unavailable';
+  }
   const installationId = await getInstallationId();
   await trpc.notifications.registerPushToken.mutate({
     token: token.token,
@@ -27,6 +35,7 @@ export async function registerPushNotifications(): Promise<'registered' | 'permi
     installationId,
     appVersion: Constants.expoConfig?.version ?? undefined,
   });
+  analytics.capture('push_permission_changed', { status: 'granted' });
   return 'registered';
 }
 

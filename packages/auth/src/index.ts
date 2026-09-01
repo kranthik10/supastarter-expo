@@ -1,6 +1,5 @@
 import { createAuthClient } from '@better-auth/client';
 import { storage, secureStorage } from './storage';
-import { analytics } from '@repo/analytics';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const AUTH_BASE_URL = `${API_URL}/api/auth`;
@@ -27,9 +26,12 @@ export type User = {
   updatedAt: Date;
 };
 
+export type AuthEvent = 'signed_in' | 'signed_up';
+
 export type AuthState = {
   user: User | null;
   session: Session | null;
+  lastAuthEvent: AuthEvent | null;
   loading: boolean;
   hydrated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
@@ -40,6 +42,7 @@ export type AuthState = {
   clearLocalSession: () => Promise<void>;
   hydrate: () => Promise<void>;
   refreshSession: () => Promise<void>;
+  consumeAuthEvent: () => AuthEvent | null;
 };
 
 const SESSION_KEY = 'auth.session';
@@ -69,6 +72,7 @@ import { create } from 'zustand';
 export const useAuth = create<AuthState>((set, get) => ({
   user: null,
   session: null,
+  lastAuthEvent: null,
   loading: false,
   hydrated: false,
 
@@ -92,11 +96,11 @@ export const useAuth = create<AuthState>((set, get) => ({
         set({ user, session });
         await persistSession(user, session);
       } else {
-        set({ user: null, session: null });
+        set({ user: null, session: null, lastAuthEvent: null });
         await persistSession(null, null);
       }
     } catch {
-      set({ user: null, session: null });
+      set({ user: null, session: null, lastAuthEvent: null });
       await persistSession(null, null);
     }
   },
@@ -110,9 +114,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
     if (result.data?.user && result.data?.session) {
       const user = mapBetterAuthUser(result.data.user);
-      set({ user, session: result.data.session, loading: false });
+      set({ user, session: result.data.session, lastAuthEvent: 'signed_in', loading: false });
       await persistSession(user, result.data.session);
-      analytics.track('sign_in', { method: 'password' });
     } else {
       set({ loading: false });
       throw new Error('Sign in failed');
@@ -128,10 +131,8 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
     if (result.data?.user && result.data?.session) {
       const user = mapBetterAuthUser(result.data.user);
-      set({ user, session: result.data.session, loading: false });
+      set({ user, session: result.data.session, lastAuthEvent: 'signed_up', loading: false });
       await persistSession(user, result.data.session);
-      analytics.identify(user.id, { email: user.email, name: user.name ?? '' });
-      analytics.track('sign_up', { method: 'password' });
     } else {
       set({ loading: false });
       throw new Error('Sign up failed');
@@ -140,8 +141,7 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   signOut: async () => {
     await authClient.signOut();
-    analytics.track('sign_out');
-    set({ user: null, session: null });
+    set({ user: null, session: null, lastAuthEvent: null });
     await persistSession(null, null);
   },
 
@@ -161,8 +161,14 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 
   clearLocalSession: async () => {
-    set({ user: null, session: null });
+    set({ user: null, session: null, lastAuthEvent: null });
     await persistSession(null, null);
+  },
+
+  consumeAuthEvent: () => {
+    const event = get().lastAuthEvent;
+    if (event) set({ lastAuthEvent: null });
+    return event;
   },
 }));
 

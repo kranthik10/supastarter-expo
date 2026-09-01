@@ -31,6 +31,7 @@ export const userPreferences = pgTable('user_preferences', {
   locale: localeEnum('locale').notNull().default('en'),
   theme: themeEnum('theme').notNull().default('system'),
   marketingOptIn: boolean('marketing_opt_in').notNull().default(false),
+  analyticsEnabled: boolean('analytics_enabled').notNull().default(true),
   inviteEmails: boolean('invite_emails').notNull().default(true),
   billingAlerts: boolean('billing_alerts').notNull().default(true),
   quietHoursStart: text('quiet_hours_start'),

@@ -11,6 +11,7 @@ import { useTheme } from '@/lib/use-theme';
 import { useAuth } from '@repo/auth';
 import { useSettings, type ThemeMode, type Locale } from '@/lib/settings-store';
 import { uploadAvatar } from '@/lib/storage/files';
+import { analytics, setAnalyticsEnabled } from '@repo/analytics';
 import { registerPushNotifications, unregisterPushNotifications } from '@/lib/notifications';
 import { trpc } from '@repo/api';
 
@@ -42,6 +43,7 @@ export default function Settings() {
   const [inviteEmails, setInviteEmails] = useState(true);
   const [billingAlerts, setBillingAlerts] = useState(true);
   const [marketingOptIn, setMarketingOptIn] = useState(false);
+  const [analyticsEnabled, setAnalyticsEnabledPreference] = useState(true);
   const [pushLoading, setPushLoading] = useState(false);
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -100,6 +102,8 @@ export default function Settings() {
     setInviteEmails(preferences.inviteEmails);
     setBillingAlerts(preferences.billingAlerts);
     setMarketingOptIn(preferences.marketingOptIn);
+    setAnalyticsEnabledPreference(preferences.analyticsEnabled);
+    setAnalyticsEnabled(preferences.analyticsEnabled);
   }, [preferencesQuery.data, setLocale, setThemeMode, i18n]);
 
   useEffect(() => {
@@ -172,9 +176,26 @@ export default function Settings() {
   const updatePreference = async (patch: PreferencePatch) => {
     try {
       await updatePreferencesMutation.mutateAsync(patch);
+      if (patch.analyticsEnabled !== undefined) {
+        setAnalyticsEnabled(patch.analyticsEnabled);
+      } else if (patch.theme !== undefined) {
+        analytics.capture('theme_changed', { theme: patch.theme });
+      } else if (patch.locale !== undefined) {
+        analytics.capture('locale_changed', { locale: patch.locale });
+      } else if (patch.marketingOptIn !== undefined) {
+        analytics.capture('settings_updated', { field: 'marketing_opt_in' });
+      } else if (patch.inviteEmails !== undefined) {
+        analytics.capture('settings_updated', { field: 'invite_emails' });
+      } else if (patch.billingAlerts !== undefined) {
+        analytics.capture('settings_updated', { field: 'billing_alerts' });
+      }
     } catch (error) {
       showError(error);
-      await preferencesQuery.refetch();
+      const refreshed = await preferencesQuery.refetch();
+      if (refreshed.data) {
+        setAnalyticsEnabledPreference(refreshed.data.analyticsEnabled);
+        setAnalyticsEnabled(refreshed.data.analyticsEnabled);
+      }
     }
   };
 
@@ -187,6 +208,12 @@ export default function Settings() {
     setLocale(nextLocale);
     void i18n.changeLanguage(nextLocale);
     void updatePreference({ locale: nextLocale });
+  };
+
+  const onAnalyticsChange = (value: boolean) => {
+    setAnalyticsEnabledPreference(value);
+    setAnalyticsEnabled(value);
+    void updatePreference({ analyticsEnabled: value });
   };
 
   const savePassword = async () => {
@@ -296,6 +323,7 @@ export default function Settings() {
         <PreferenceRow label={t('settings.inviteEmails')} value={inviteEmails} disabled={preferenceLoading} onChange={(value) => { setInviteEmails(value); void updatePreference({ inviteEmails: value }); }} />
         <PreferenceRow label={t('settings.billingAlerts')} value={billingAlerts} disabled={preferenceLoading} onChange={(value) => { setBillingAlerts(value); void updatePreference({ billingAlerts: value }); }} />
         <PreferenceRow label={t('settings.marketingOptIn')} value={marketingOptIn} disabled={preferenceLoading} onChange={(value) => { setMarketingOptIn(value); void updatePreference({ marketingOptIn: value }); }} />
+        <PreferenceRow label={t('settings.analyticsEnabled')} value={analyticsEnabled} disabled={preferenceLoading} onChange={onAnalyticsChange} />
         <Text variant="small" muted>{t('settings.quietHoursNote')}</Text>
         <Button label={t('settings.enablePush')} onPress={() => void enablePush()} loading={pushLoading} variant="secondary" full />
       </Card>

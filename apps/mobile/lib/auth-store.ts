@@ -79,7 +79,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     }
     await persist(user);
     set({ user, loading: false });
-    analytics.track('sign_in', { method: 'password' });
+    analytics.capture('user_signed_in', { method: 'password' });
   },
 
   signUp: async (name, email, password) => {
@@ -100,12 +100,12 @@ export const useAuth = create<AuthState>((set, get) => ({
     await storage.set(`users.${user.email}`, JSON.stringify(user));
     await persist(user);
     set({ user, loading: false });
-    analytics.identify(user.id, { email: user.email });
-    analytics.track('sign_up', { method: 'password' });
+    analytics.capture('user_signed_up', { method: 'password' });
   },
 
   signOut: async () => {
-    analytics.track('sign_out');
+    analytics.capture('user_signed_out', {});
+    analytics.reset();
     await persist(null);
     set({ user: null });
   },

@@ -26,6 +26,7 @@ import { cleanupExpiredFiles, getOrganizationStorageUsage } from './storage-serv
 import { getStorageProvider, StorageProviderError, type StorageProvider } from '@repo/storage/server';
 import { buildObjectKey, canConfirmFile, canReserveStorage, DOWNLOAD_URL_EXPIRY_SECONDS, storageLimitBytes, UPLOAD_URL_EXPIRY_SECONDS, validateUploadMetadata } from '@repo/storage/policy';
 import { createNotification } from '@repo/notifications/server';
+import { captureServerEvent, getServerAnalyticsProvider } from '@repo/analytics/server';
 import { decodeNotificationCursor, encodeNotificationCursor, isExpoPushToken, notificationCategories, parseNotificationData } from '@repo/notifications/policy';
 import {
   canDeleteAccount,
@@ -38,6 +39,7 @@ import {
 } from './settings';
 
 const t = initTRPC.context<ApiContext>().create({ transformer: superjson });
+const serverAnalyticsProvider = getServerAnalyticsProvider();
 
 export const middleware = t.middleware;
 export const router = t.router;
@@ -100,6 +102,7 @@ const preferencesPatchSchema = z
     locale: z.enum(localeValues).optional(),
     theme: z.enum(themeValues).optional(),
     marketingOptIn: z.boolean().optional(),
+    analyticsEnabled: z.boolean().optional(),
     inviteEmails: z.boolean().optional(),
     billingAlerts: z.boolean().optional(),
     quietHoursStart: quietHourSchema.nullable().optional(),
@@ -157,6 +160,7 @@ function toPublicPreferences(row: any): UserPreferences {
     locale: row.locale,
     theme: row.theme,
     marketingOptIn: row.marketingOptIn,
+    analyticsEnabled: row.analyticsEnabled,
     inviteEmails: row.inviteEmails,
     billingAlerts: row.billingAlerts,
     quietHoursStart: row.quietHoursStart,
@@ -384,6 +388,7 @@ export const appRouter = router({
           await syncEntitlementsForPlan(tx, id, 'free');
         });
         const [row] = await db.select().from(organizations).where(eq(organizations.id, id)).limit(1);
+        captureServerEvent(serverAnalyticsProvider, 'organization_created', { organization_id: id });
         return row;
       }),
 
@@ -698,6 +703,7 @@ export const appRouter = router({
         });
         if (result.kind === 'expired') reasonError('invitation_expired');
         if (result.kind === 'accepted') {
+          captureServerEvent(serverAnalyticsProvider, 'invitation_accepted', { organization_id: result.organizationId });
           try {
             await createNotification(db, {
               userId: result.invitedBy,
@@ -1235,6 +1241,7 @@ export const appRouter = router({
             ...(input.locale !== undefined ? { locale: input.locale } : {}),
             ...(input.theme !== undefined ? { theme: input.theme } : {}),
             ...(input.marketingOptIn !== undefined ? { marketingOptIn: input.marketingOptIn } : {}),
+            ...(input.analyticsEnabled !== undefined ? { analyticsEnabled: input.analyticsEnabled } : {}),
             ...(input.inviteEmails !== undefined ? { inviteEmails: input.inviteEmails } : {}),
             ...(input.billingAlerts !== undefined ? { billingAlerts: input.billingAlerts } : {}),
             ...(input.quietHoursStart !== undefined ? { quietHoursStart: input.quietHoursStart } : {}),

@@ -43,6 +43,13 @@
       "when": 1788300076592,
       "tag": "0005_many_virginia_dare",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1788304030519,
+      "tag": "0006_high_jazinda",
+      "breakpoints": true
     }
   ]
 }

@@ -15,6 +15,7 @@ describe('user preference validation', () => {
       locale: 'en',
       theme: 'system',
       marketingOptIn: false,
+      analyticsEnabled: true,
       inviteEmails: true,
       billingAlerts: true,
       quietHoursStart: null,

@@ -171,6 +171,7 @@ const de: typeof en = {
     inviteEmails: 'E-Mails zu Teameinladungen',
     billingAlerts: 'Abrechnungswarnungen',
     marketingOptIn: 'Produktneuigkeiten',
+    analyticsEnabled: 'Produktanalyse',
     enablePush: 'Push-Benachrichtigungen aktivieren',
     pushRegistered: 'Push-Benachrichtigungen aktiviert.',
     pushPermissionDenied: 'Die Push-Berechtigung wurde nicht erteilt.',

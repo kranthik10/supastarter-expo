@@ -593,15 +593,11 @@ Expo (ImagePicker) → POST /trpc/files.presign { contentType, fileName, orgId }
 
 ### 9.5 Analytics (§19)
 
-Current `lib/analytics/index.ts` already correct — provider swap via `setAnalyticsProvider`. Phase 1 wires PostHog:
+The implemented `@repo/analytics` facade keeps screens/provider code decoupled, uses a typed `lower_snake_case` catalog, and exposes separate client-safe and server-only exports. The client initializes from public `EXPO_PUBLIC_POSTHOG_KEY`/`EXPO_PUBLIC_POSTHOG_HOST` only; the server provider reads private `POSTHOG_SERVER_KEY` only through `@repo/analytics/server`.
 
-```ts
-setAnalyticsProvider(new PostHogProvider({ apiKey: EXPO_PUBLIC_POSTHOG_KEY, host: EXPO_PUBLIC_POSTHOG_HOST }));
-```
+The authenticated internal user ID is the distinct ID. Raw email, full name, phone, address, credentials, invitation tokens, signed URLs, and arbitrary nested metadata are rejected or omitted. `user_preferences.analytics_enabled` is separate from `marketing_opt_in`; consent is loaded before authenticated analytics, and disablement resets provider identity.
 
-Events (V1):
-`user_signed_up`, `user_signed_in`, `organization_created`, `member_invited`, `member_removed`,
-`subscription_started`, `subscription_cancelled`, `notification_opened`, `file_uploaded`.
+V1 product events use one convention, `lower_snake_case`, including `user_signed_up`, `user_signed_in`, `user_signed_out`, `organization_created`, `invitation_accepted`, `notification_opened`, `settings_updated`, and `storage_upload_completed`. Screen tracking occurs at the Expo Router boundary and sanitizes dynamic paths such as invitation-token routes to logical names.
 
 ### 9.6 Error monitoring (§20)
 

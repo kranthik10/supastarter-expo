@@ -1,6 +1,6 @@
 import '../lib/i18n';
-import React, { useEffect } from 'react';
-import { Stack, router } from 'expo-router';
+import React, { useEffect, useRef } from 'react';
+import { Stack, router, usePathname } from 'expo-router';
 import { Appearance } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -12,15 +12,24 @@ import { changeLanguage } from '@/lib/i18n';
 import { useDeepLinks, storePendingLink } from '@/lib/linking';
 import { addNotificationResponseListener, getLastNotificationData, type SafeNotificationData } from '@repo/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { analytics, configureAnalytics, screenNameForPath, setAnalyticsEnabled } from '@repo/analytics';
+import { config } from '@repo/config';
+import { trpc } from '@repo/api';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 const queryClient = new QueryClient();
+configureAnalytics({ apiKey: config.posthogKey, host: config.posthogHost });
 
 export default function RootLayout() {
   const hydrated = useAuth((s) => s.hydrated);
   const settingsHydrated = useSettings((s) => s.hydrated);
   const isDark = useSettings((s) => s.isDark);
   const locale = useSettings((s) => s.locale);
+  const user = useAuth((s) => s.user);
+  const activeOrgId = useOrgs((s) => s.activeOrgId);
+  const pathname = usePathname();
+  const previousUserId = useRef<string | null>(null);
+  const analyticsOrgId = useRef<string | null>(null);
 
   const hydrateAuth = useAuth((s) => s.hydrate);
   const hydrateOrgs = useOrgs((s) => s.hydrate);
@@ -28,6 +37,55 @@ export default function RootLayout() {
   const hydrateSettings = useSettings((s) => s.hydrate);
 
   useDeepLinks();
+
+  useEffect(() => {
+    if (!hydrated) return;
+    if (!user) {
+      if (previousUserId.current) analytics.capture('user_signed_out', {});
+      analytics.reset();
+      setAnalyticsEnabled(false);
+      previousUserId.current = null;
+      analyticsOrgId.current = null;
+      return;
+    }
+    if (previousUserId.current === user.id) return;
+    previousUserId.current = user.id;
+    analyticsOrgId.current = null;
+    setAnalyticsEnabled(false);
+    let active = true;
+    void trpc.settings.getPreferences.query().then((preferences) => {
+      if (!active) return;
+      setAnalyticsEnabled(preferences.analyticsEnabled);
+      if (!preferences.analyticsEnabled) return;
+      const currentLocale = useSettings.getState().locale;
+      analytics.identify(user.id, { locale: currentLocale, theme: preferences.theme });
+      const authEvent = useAuth.getState().consumeAuthEvent() ?? 'signed_in';
+      analytics.capture(authEvent === 'signed_up' ? 'user_signed_up' : 'user_signed_in', { method: 'unknown' });
+      analytics.screen(screenNameForPath(pathname));
+      const currentOrgId = useOrgs.getState().activeOrgId;
+      if (currentOrgId) {
+        analytics.group('organization', currentOrgId);
+        analyticsOrgId.current = currentOrgId;
+      }
+    }).catch(() => {
+      if (active) setAnalyticsEnabled(false);
+    });
+    return () => {
+      active = false;
+    };
+  }, [hydrated, pathname, user?.id]);
+
+  useEffect(() => {
+    if (!hydrated || !user || !analytics.isEnabled()) return;
+    analytics.screen(screenNameForPath(pathname));
+  }, [hydrated, pathname, user?.id]);
+
+  useEffect(() => {
+    if (!user || !activeOrgId || !analytics.isEnabled() || analyticsOrgId.current === activeOrgId) return;
+    if (analyticsOrgId.current) analytics.capture('organization_switched', { organization_id: activeOrgId });
+    analytics.group('organization', activeOrgId);
+    analyticsOrgId.current = activeOrgId;
+  }, [activeOrgId, user?.id]);
 
   useEffect(() => {
     if (!hydrated || !settingsHydrated) return;

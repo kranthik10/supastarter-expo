@@ -168,6 +168,7 @@ const en = {
     inviteEmails: 'Team invitation emails',
     billingAlerts: 'Billing alerts',
     marketingOptIn: 'Product updates',
+    analyticsEnabled: 'Product analytics',
     enablePush: 'Enable push notifications',
     pushRegistered: 'Push notifications enabled.',
     pushPermissionDenied: 'Push permission was not granted.',

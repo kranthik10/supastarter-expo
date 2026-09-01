@@ -8,6 +8,7 @@ export type UserPreferences = {
   locale: UserLocale;
   theme: UserTheme;
   marketingOptIn: boolean;
+  analyticsEnabled: boolean;
   inviteEmails: boolean;
   billingAlerts: boolean;
   quietHoursStart: string | null;
@@ -20,6 +21,7 @@ export const defaultUserPreferences: UserPreferences = {
   locale: 'en',
   theme: 'system',
   marketingOptIn: false,
+  analyticsEnabled: true,
   inviteEmails: true,
   billingAlerts: true,
   quietHoursStart: null,
