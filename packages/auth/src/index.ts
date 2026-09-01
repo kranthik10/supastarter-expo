@@ -36,7 +36,8 @@ export type AuthState = {
   signUp: (name: string, email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (patch: Partial<Pick<User, 'name' | 'image'>>) => Promise<void>;
-  deleteAccount: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string, revokeOtherSessions?: boolean) => Promise<void>;
+  clearLocalSession: () => Promise<void>;
   hydrate: () => Promise<void>;
   refreshSession: () => Promise<void>;
 };
@@ -147,19 +148,19 @@ export const useAuth = create<AuthState>((set, get) => ({
   updateProfile: async (patch) => {
     const current = get().user;
     if (!current) return;
-    const result = await authClient.$invoke.patch('/user', { body: patch });
-    if (result.error) throw new Error(result.error);
-    if (result.data?.user) {
-      const user = mapBetterAuthUser(result.data.user);
-      set({ user });
-      await persistSession(user, get().session);
-    }
+    const result = await authClient.$invoke.post('/update-user', { body: patch });
+    if (result.error) throw new Error(result.error.message ?? String(result.error));
+    await get().refreshSession();
   },
 
-  deleteAccount: async () => {
-    const result = await authClient.$invoke.delete('/user');
-    if (result.error) throw new Error(result.error);
-    analytics.track('delete_account');
+  changePassword: async (currentPassword, newPassword, revokeOtherSessions = false) => {
+    const result = await authClient.$invoke.post('/change-password', {
+      body: { currentPassword, newPassword, revokeOtherSessions },
+    });
+    if (result.error) throw new Error(result.error.message ?? String(result.error));
+  },
+
+  clearLocalSession: async () => {
     set({ user: null, session: null });
     await persistSession(null, null);
   },

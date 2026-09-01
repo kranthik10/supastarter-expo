@@ -1,12 +1,13 @@
 # Phase 3 — SaaS Product Layer Architecture
 
-**Status:** Phase 3.1 + Phase 3.2 implemented; remaining Phase 3 milestones are specification only
+**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 implemented; remaining Phase 3 milestones are specification only
 **Historical baseline:** `5c1ceba` (Phase 2)
 **Phase 3.1 checkpoint:** `c0f54f7`; documentation closure `33daf39`; GitHub Actions `33539998678` PASS
-**Phase 3.2 active baseline:** `33daf39`
+**Phase 3.2 active baseline:** `f7517ae`; GitHub Actions `33544316656` PASS
+**Phase 3.3 active implementation:** User Settings local validation recorded in `docs/phase-3-milestone-3.3-delivery.md`
 **Repository:** `kranthik10/supastarter-expo` (public, main)
 **Validation at historical baseline:** `typecheck: PASS` (26), `lint: PASS` (14), `test: PASS` (4 files, 30 tests), `build: PASS` (expo export), CI `33453674804` PASS
-**Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 local validation is recorded in `docs/phase-3-milestone-3.2-delivery.md`
+**Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 CI `33544316656` PASS; Phase 3.3 local validation is recorded in `docs/phase-3-milestone-3.3-delivery.md`
 
 > This document is the Phase 3 blueprint. It extends Phase 0 (`docs/phase-0-technical-decisions.md` + `docs/adr/*` + `docs/erd.md`) and Phase 2 (`docs/phase-2-identity-saas-core.md` + `docs/phase-2-milestone-3-eas-maestro-ci.md`) without contradicting them. Where a conflict exists it is called out explicitly instead of silently changing a decision.
 
@@ -286,12 +287,13 @@ Sign up/in → Better Auth handler (Hono → DB sessions) → Set-Cookie / Beare
           → tRPC Bearer → ctx.user hydrated per request
 ```
 
-**What Phase 3 adds (thin):**
+**What Phase 3.3 adds (implemented, thin):**
 
-- **Profile:** `settings.getProfile` / `updateProfile` read/write `users.name` + `users.avatar_url` (R2 key). Email change requires re-verification (`emailVerified` reset, verification email via Resend).
-- **Password/security:** `auth.changePassword` already via Better Auth; mobile just surfaces it. No new password Hash column.
-- **Session/device management:** if `better-auth` exposes `listSessions`/`revokeSession`, expose via `auth.listSessions`/`revokeSession`; otherwise defer to Phase 4 (no schema invented). Mobile stores at most one `expo-secure-store` token; server may have many `sessions` rows.
-- **Account deletion:** `settings.deleteAccount` soft-deletes `users.deleted_at`, cascades are not immediate — background job (or next login) hard-deletes after grace.
+- **Profile:** `settings.getProfile` / `settings.updateProfile` read/write only the authenticated user's `users.name` and validated remote `users.image` reference. `users.image` remains canonical; no `avatar_url` or R2 upload. Direct email change is rejected/deferred to Better Auth verification flow.
+- **Preferences:** `settings.getPreferences` / `updatePreferences` lazily persist `user_preferences` with finite `en|de` locale, `system|light|dark` theme, notification preference flags, and paired strict `HH:MM` quiet hours.
+- **Password/security:** Better Auth 1.7.2's official `changePassword` endpoint is wrapped by the mobile auth client; no password SQL/hash handling is added. Existing session rows are exposed through user-scoped settings wrappers without returning tokens.
+- **Session/device management:** `settings.listSessions`, `revokeSession`, and `revokeOtherSessions` operate on Better Auth's existing `sessions` table, filter by `ctx.user.id`, and omit tokens. Devices/Expo push remain Phase 3.5.
+- **Account deletion:** `settings.deleteAccount` performs immediate, ownership-guarded deletion through the existing Better Auth Drizzle tables after deleting sessions. A sole owner receives `PRECONDITION_FAILED: ownership_transfer_required`; delayed soft-delete/hard-delete grace processing is deferred.
 
 **Guardrail:** `apps/mobile/app/(app)/_layout.tsx` gate (`hydrated && user`) stays; no route bypasses it.
 
@@ -660,8 +662,8 @@ app/(app)/assistant.tsx, organization/[slug].tsx
 
 | Control | Existing (Phase 2) | Phase 3 additive |
 |---------|--------------------|------------------|
-| **Auth** | Better Auth session as SoR, `protectedProcedure` checks `ctx.user`, gate in `(app)/_layout` | `settings.deleteAccount` soft-deletes; `listSessions/revokeSession` when exposed; session expiry → `(app)` gate → `/sign-in` + `analytics.reset()` + `setUserContext(null)` |
-| **Authz** | `assertCan(role, perm)` per org, role from DB not client | New procedures reuse same `getMembership→assertCan→tx→audit` pattern; no new permission bypass; `invitations.manage` reuses `members.invite` |
+| **Auth** | Better Auth session as SoR, `protectedProcedure` checks `ctx.user`, gate in `(app)/_layout` | `settings.deleteAccount` deletes sessions before the Better Auth user row and blocks sole-owner deletion; `listSessions/revokeSession` wrappers are user-scoped; session expiry → `(app)` gate → `/sign-in` |
+| **Authz** | `assertCan(role, perm)` per org, role from DB not client | User settings derive `ctx.user.id` and need no organization permission; org/team procedures retain membership + `assertCan` |
 | **Input validation** | `zod` on every tRPC input; `users(email unique)` | All Phase 3 inputs `zod`-validated; file `key`/`url` never client-controlled; avatar via `confirmUpload` HEAD check |
 | **Rate limiting** | None yet | In-memory leaky bucket (Node) per `(userId, procedure)` (e.g. `invitations.create` 5/min, `storage.createPresignedUrl` 20/min) — Vercel/Cloudflare layer optional via ADR-012 |
 | **Webhook verification** | No webhook yet | `stripe.webhooks.constructEvent` with `STRIPE_WEBHOOK_SECRET`; RevenueCat HMAC compare (constant-time); fail-closed `401` before write; `idempotency_key` dedup |

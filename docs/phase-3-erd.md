@@ -43,25 +43,25 @@ erDiagram
 
 | col | change | notes |
 |-----|--------|-------|
-| avatar_url | ADD `text nullable` | R2 key, normalized from `image` |
-| deleted_at | ADD `timestamptz nullable` | Soft delete; hard delete after grace |
+| image | unchanged and canonical | Existing Better Auth image/avatar reference; no duplicate `avatar_url` |
+| deleted_at | **DEFERRED** | Soft-delete/grace lifecycle requires auth-aware sign-in/session changes not present in this milestone |
 | updated_at | unchanged | |
 
-### user_preferences (new)
+### user_preferences (implemented in Milestone 3.3)
 
 | col | type | constraints |
 |-----|------|-------------|
 | user_id | text | pk, fk users.id cascade |
-| locale | text | default `en` |
-| theme | text | `system` \| `light` \| `dark` |
+| locale | enum `locale` | `en` \| `de`, default `en` |
+| theme | enum `theme` | `system` \| `light` \| `dark`, default `system` |
 | marketing_opt_in | boolean | default false |
 | invite_emails | boolean | default true |
 | billing_alerts | boolean | default true |
-| quiet_hours_start | text nullable | `HH:MM` |
-| quiet_hours_end | text nullable | `HH:MM` |
+| quiet_hours_start | text nullable | strict `HH:MM`, paired with end |
+| quiet_hours_end | text nullable | strict `HH:MM`, paired with start |
 | updated_at | timestamptz | not null, default now() |
 
-One row per user, `userId` is PK.
+One row per user, `user_id` is PK. Rows are created lazily with safe defaults by `settings.getPreferences`; no destructive backfill.
 
 ### subscriptions (delta)
 

@@ -17,6 +17,7 @@
     "@repo/storage": "workspace:*",
     "@repo/types": "workspace:*",
     "@repo/ui": "workspace:*",
+    "@tanstack/react-query": "^5.102.8",
     "expo": "~57.0.15",
     "expo-constants": "~57.0.13",
     "expo-device": "~57.0.1",

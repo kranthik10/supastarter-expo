@@ -10,8 +10,10 @@ import { useOrgs } from '@repo/organizations';
 import { useBilling } from '@repo/billing';
 import { changeLanguage } from '@/lib/i18n';
 import { useDeepLinks } from '@/lib/linking';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
+const queryClient = new QueryClient();
 
 export default function RootLayout() {
   const hydrated = useAuth((s) => s.hydrated);
@@ -47,7 +49,7 @@ export default function RootLayout() {
   if (!hydrated || !settingsHydrated) return null;
 
   return (
-    <>
+    <QueryClientProvider client={queryClient}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(marketing)" />
@@ -56,7 +58,7 @@ export default function RootLayout() {
         <Stack.Screen name="(onboarding)" />
         <Stack.Screen name="(app)" />
       </Stack>
-    </>
+    </QueryClientProvider>
   );
 }
 

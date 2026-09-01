@@ -3,8 +3,8 @@ import { z } from 'zod';
 import superjson from 'superjson';
 import type { ApiContext } from './context';
 import { getDb } from '@repo/database';
-import { auditLogs, invitations, organizations, organizationMembers, subscriptions, users } from '@repo/database';
-import { and, desc, eq, lte, sql } from 'drizzle-orm';
+import { auditLogs, invitations, organizations, organizationMembers, sessions, subscriptions, userPreferences, users } from '@repo/database';
+import { and, desc, eq, lte, ne, sql } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import { assertCan } from '@repo/permissions';
 import { getEntitlement, listEntitlements, syncEntitlementsForPlan } from '@repo/billing/entitlements.server';
@@ -22,6 +22,15 @@ import {
   type MemberRole,
 } from './team';
 import { getInvitationEmailProvider } from './email';
+import {
+  canDeleteAccount,
+  defaultUserPreferences,
+  localeValues,
+  mergeUserPreferences,
+  themeValues,
+  validateQuietHours,
+  type UserPreferences,
+} from './settings';
 
 const t = initTRPC.context<ApiContext>().create({ transformer: superjson });
 
@@ -70,6 +79,68 @@ async function writeAudit(
 
 function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === '23505';
+}
+
+const profilePatchSchema = z
+  .object({
+    name: z.string().trim().min(1).max(120).optional(),
+    image: z.string().url().max(2_048).nullable().optional(),
+  })
+  .strict()
+  .refine((value) => Object.keys(value).length > 0, { message: 'no_fields_to_update' });
+
+const quietHourSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/);
+const preferencesPatchSchema = z
+  .object({
+    locale: z.enum(localeValues).optional(),
+    theme: z.enum(themeValues).optional(),
+    marketingOptIn: z.boolean().optional(),
+    inviteEmails: z.boolean().optional(),
+    billingAlerts: z.boolean().optional(),
+    quietHoursStart: quietHourSchema.nullable().optional(),
+    quietHoursEnd: quietHourSchema.nullable().optional(),
+  })
+  .strict();
+
+function toPublicPreferences(row: any): UserPreferences {
+  return {
+    locale: row.locale,
+    theme: row.theme,
+    marketingOptIn: row.marketingOptIn,
+    inviteEmails: row.inviteEmails,
+    billingAlerts: row.billingAlerts,
+    quietHoursStart: row.quietHoursStart,
+    quietHoursEnd: row.quietHoursEnd,
+  };
+}
+
+async function getOrCreateUserPreferences(db: any, userId: string): Promise<UserPreferences> {
+  const [existing] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).limit(1);
+  if (existing) return toPublicPreferences(existing);
+  try {
+    const [created] = await db
+      .insert(userPreferences)
+      .values({ userId, ...defaultUserPreferences })
+      .returning();
+    return toPublicPreferences(created);
+  } catch (error) {
+    if (!isUniqueViolation(error)) throw error;
+    const [createdByRace] = await db.select().from(userPreferences).where(eq(userPreferences.userId, userId)).limit(1);
+    if (!createdByRace) throw error;
+    return toPublicPreferences(createdByRace);
+  }
+}
+
+function safeProfile(user: any) {
+  return {
+    id: user.id,
+    email: user.email,
+    emailVerified: user.emailVerified,
+    name: user.name,
+    image: user.image,
+    createdAt: user.createdAt,
+    updatedAt: user.updatedAt,
+  };
 }
 
 async function expirePendingInvitations(db: any, organizationId: string, now: Date): Promise<void> {
@@ -640,6 +711,129 @@ export const appRouter = router({
         if (result.kind === 'expired') reasonError('invitation_expired');
         return { ok: true as const };
       }),
+  }),
+
+  settings: router({
+    getProfile: protectedProcedure.query(({ ctx }) => safeProfile(ctx.user)),
+
+    updateProfile: protectedProcedure
+      .input(profilePatchSchema)
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [updated] = await db
+          .update(users)
+          .set({
+            ...(input.name !== undefined ? { name: input.name } : {}),
+            ...(input.image !== undefined ? { image: input.image } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(users.id, ctx.user!.id))
+          .returning();
+        if (!updated) throw new TRPCError({ code: 'NOT_FOUND', message: 'user_not_found' });
+        return safeProfile(updated);
+      }),
+
+    getPreferences: protectedProcedure.query(async ({ ctx }) => {
+      const db = ctx.db ?? getDb();
+      return getOrCreateUserPreferences(db, ctx.user!.id);
+    }),
+
+    updatePreferences: protectedProcedure
+      .input(preferencesPatchSchema)
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const current = await getOrCreateUserPreferences(db, ctx.user!.id);
+        const merged = mergeUserPreferences(current, input);
+        if (!validateQuietHours(merged.quietHoursStart, merged.quietHoursEnd)) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'quiet_hours_pair_invalid' });
+        }
+        const [updated] = await db
+          .update(userPreferences)
+          .set({
+            ...(input.locale !== undefined ? { locale: input.locale } : {}),
+            ...(input.theme !== undefined ? { theme: input.theme } : {}),
+            ...(input.marketingOptIn !== undefined ? { marketingOptIn: input.marketingOptIn } : {}),
+            ...(input.inviteEmails !== undefined ? { inviteEmails: input.inviteEmails } : {}),
+            ...(input.billingAlerts !== undefined ? { billingAlerts: input.billingAlerts } : {}),
+            ...(input.quietHoursStart !== undefined ? { quietHoursStart: input.quietHoursStart } : {}),
+            ...(input.quietHoursEnd !== undefined ? { quietHoursEnd: input.quietHoursEnd } : {}),
+            updatedAt: new Date(),
+          })
+          .where(eq(userPreferences.userId, ctx.user!.id))
+          .returning();
+        return toPublicPreferences(updated ?? merged);
+      }),
+
+    listSessions: protectedProcedure.query(async ({ ctx }) => {
+      const db = ctx.db ?? getDb();
+      return db
+        .select({
+          id: sessions.id,
+          createdAt: sessions.createdAt,
+          expiresAt: sessions.expiresAt,
+          ipAddress: sessions.ipAddress,
+          userAgent: sessions.userAgent,
+          current: sql<boolean>`${sessions.id} = ${ctx.sessionId ?? ''}`,
+        })
+        .from(sessions)
+        .where(eq(sessions.userId, ctx.user!.id))
+        .orderBy(desc(sessions.createdAt));
+    }),
+
+    revokeSession: protectedProcedure
+      .input(z.object({ sessionId: z.string().min(1) }))
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [deleted] = await db
+          .delete(sessions)
+          .where(and(eq(sessions.id, input.sessionId), eq(sessions.userId, ctx.user!.id)))
+          .returning({ id: sessions.id });
+        if (!deleted) throw new TRPCError({ code: 'NOT_FOUND', message: 'session_not_found' });
+        return { ok: true as const };
+      }),
+
+    revokeOtherSessions: protectedProcedure.mutation(async ({ ctx }) => {
+      const db = ctx.db ?? getDb();
+      if (!ctx.sessionId) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'current_session_unavailable' });
+      await db.delete(sessions).where(and(eq(sessions.userId, ctx.user!.id), ne(sessions.id, ctx.sessionId)));
+      return { ok: true as const };
+    }),
+
+    deleteAccount: protectedProcedure.mutation(async ({ ctx }) => {
+      const db = ctx.db ?? getDb();
+      return db.transaction(async (tx: any) => {
+        const ownedOrganizations = await tx
+          .select({ organizationId: organizationMembers.organizationId })
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.userId, ctx.user!.id), eq(organizationMembers.role, 'owner')));
+        let soleOwnerOrganizations = 0;
+        for (const owned of ownedOrganizations) {
+          // Serialize this check with ownership transfer and member-removal transactions.
+          await tx.execute(sql`SELECT id FROM organization_members WHERE organization_id = ${owned.organizationId} FOR UPDATE`);
+          const [{ ownerCount }] = await tx
+            .select({ ownerCount: sql<number>`count(*)` })
+            .from(organizationMembers)
+            .where(and(eq(organizationMembers.organizationId, owned.organizationId), eq(organizationMembers.role, 'owner')));
+          if (Number(ownerCount) <= 1) soleOwnerOrganizations += 1;
+        }
+        const deletion = canDeleteAccount(soleOwnerOrganizations);
+        if (!deletion.ok) reasonError(deletion.reason);
+
+        await writeAudit(tx, {
+          organizationId: null,
+          userId: ctx.user!.id,
+          action: 'account.deleted',
+          targetType: 'user',
+          targetId: ctx.user!.id,
+          metadata: { deletionMode: 'immediate_better_auth_store_delete' },
+        });
+        await tx.delete(sessions).where(eq(sessions.userId, ctx.user!.id));
+        // Better Auth remains the identity system of record; this deletes the same user row it owns.
+        // Accounts, memberships, preferences, devices, files, and notifications follow existing FK rules.
+        await tx.delete(users).where(eq(users.id, ctx.user!.id));
+        return { ok: true as const };
+      });
+    }),
   }),
 
   billing: router({

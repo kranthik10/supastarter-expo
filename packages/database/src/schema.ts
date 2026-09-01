@@ -6,6 +6,8 @@ export const planEnum = pgEnum('plan', ['free', 'pro', 'enterprise']);
 export const subscriptionStatusEnum = pgEnum('subscription_status', ['active', 'past_due', 'canceled', 'trialing', 'incomplete']);
 export const providerEnum = pgEnum('provider', ['apple', 'google', 'stripe', 'revenuecat']);
 export const invitationStatusEnum = pgEnum('invitation_status', ['pending', 'accepted', 'revoked', 'expired']);
+export const localeEnum = pgEnum('locale', ['en', 'de']);
+export const themeEnum = pgEnum('theme', ['system', 'light', 'dark']);
 
 export const users = pgTable(
   'users',
@@ -20,6 +22,20 @@ export const users = pgTable(
   },
   (t) => [uniqueIndex('users_email_uidx').on(t.email)]
 );
+
+export const userPreferences = pgTable('user_preferences', {
+  userId: text('user_id')
+    .primaryKey()
+    .references(() => users.id, { onDelete: 'cascade' }),
+  locale: localeEnum('locale').notNull().default('en'),
+  theme: themeEnum('theme').notNull().default('system'),
+  marketingOptIn: boolean('marketing_opt_in').notNull().default(false),
+  inviteEmails: boolean('invite_emails').notNull().default(true),
+  billingAlerts: boolean('billing_alerts').notNull().default(true),
+  quietHoursStart: text('quiet_hours_start'),
+  quietHoursEnd: text('quiet_hours_end'),
+  updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+});
 
 export const accounts = pgTable(
   'accounts',
@@ -248,12 +264,13 @@ export const auditLogs = pgTable(
   (t) => [index('audit_org_idx').on(t.organizationId), index('audit_user_idx').on(t.userId)]
 );
 
-export const usersRelations = relations(users, ({ many }) => ({
+export const usersRelations = relations(users, ({ many, one }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
   members: many(organizationMembers),
   devices: many(devices),
   notifications: many(notifications),
+  preferences: one(userPreferences, { fields: [users.id], references: [userPreferences.userId] }),
 }));
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({

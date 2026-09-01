@@ -1,7 +1,7 @@
 import * as Linking from 'expo-linking';
 import { useEffect } from 'react';
 import { router } from 'expo-router';
-import { useAuth } from './auth-store';
+import { useAuth } from '@repo/auth';
 import { useOrgs } from './org-store';
 import { secureStorage } from './storage';
 
