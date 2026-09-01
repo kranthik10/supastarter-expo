@@ -1,2 +1,4 @@
-appId: com.mobilesaas.app
+appId: com.mobilesaas.app.dev
 workspaceId: local
+# Production appId: com.mobilesaas.app
+# Preview appId: com.mobilesaas.app.preview

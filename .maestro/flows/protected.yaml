@@ -1,4 +1,4 @@
-appId: com.mobilesaas.app
+appId: com.mobilesaas.app.dev
 ---
 - launchApp:
     clearState: true
