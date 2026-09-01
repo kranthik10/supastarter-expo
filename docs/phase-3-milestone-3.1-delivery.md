@@ -1,9 +1,11 @@
 # Phase 3 Milestone 3.1 — Delivery
 
 **Date:** 2026-09-01
-**Baseline:** `5c1ceba`
+**Historical baseline:** `5c1ceba`
+**Checkpoint commit:** `c0f54f7` (`feat: complete phase 3.1 billing and entitlements`)
+**GitHub Actions:** `33539998678` — `completed` / `success`
 **Branch:** `main`
-**Status:** IMPLEMENTED — ready for 3.2
+**Status:** IMPLEMENTED + COMMITTED — ready for 3.2
 
 ---
 
@@ -62,6 +64,7 @@ Billing foundation + subscription lifecycle + org-scoped entitlements + server-e
 | `pnpm build` | PASS | 14 tasks, expo export → `dist` (billing routes 18KB), no bundle leak |
 | `pnpm --filter @repo/database db:generate` | PASS | `No schema changes, nothing to migrate` + migration `0001_spotty_wrecker.sql` tracked |
 | `drizzle-kit push --force` | PASS | `Changes applied` + `mobile_saas_dev` has 4 entitlements for demo org |
+| GitHub Actions `CI` | PASS | Run `33539998678`, `completed` / `success`, head `c0f54f7` |
 | RBAC server-enforced | PASS | `assertCan(billing.read/manage)` in every billing procedure, membership check before resolver; negative tests for member/admin manage |
 | Org isolation | PASS | `(organization_id, feature)` unique, membership guard, per-org limits verified (free 3 vs enterprise null) |
 | Subscription lifecycle | PASS | trialing (future vs past trialEndsAt), active (cancelAtPeriodEnd ignored), past_due grace, canceled/incomplete disabled, thresholds tested pure |
@@ -135,4 +138,4 @@ Untracked docs (not yet committed per instruction): `docs/phase-3-milestone-3.1-
 
 Ready for **Milestone 3.2 — Teams + Invitations** (invitations.status/code, member removal/role change/ownership transfer, gated by `members.limit` via `canUseFeature`).
 
-Commit: NOT COMMITTED (per instruction — run `git status`/`git diff --stat` shows 9 modified + 9 untracked + 1 migration, `.env.development` intentionally untracked)
+Checkpoint: `c0f54f7`; GitHub Actions: `33539998678` — `completed` / `success`.
