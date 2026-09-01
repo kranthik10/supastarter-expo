@@ -48,6 +48,8 @@ yarn-error.*
 
 # drizzle
 drizzle/
+!packages/database/drizzle/
+!packages/database/drizzle/**
 
 # pnpm - keep lockfile!
 # pnpm-lock.yaml intentionally not ignored (uncomment to ignore)

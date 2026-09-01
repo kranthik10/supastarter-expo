@@ -1,6 +1,9 @@
 export * from './plans';
+export * from './provider';
+export type { Feature, PlanId as EntitlementPlanId, SubscriptionRow, SubscriptionStatus } from './entitlements';
+export { PLAN_ENTITLEMENTS, ALL_FEATURES, isSubscriptionEntitled, resolveEntitlement } from './entitlements';
+
 import { create } from 'zustand';
-import { storage } from '@repo/storage';
 import type { PlanId } from './plans';
 
 type BillingState = {
@@ -9,18 +12,8 @@ type BillingState = {
   hydrate: () => Promise<void>;
 };
 
-const KEY = 'billing.v1';
-
 export const useBilling = create<BillingState>((set) => ({
   plan: 'free',
-  setPlan: (plan) => {
-    set({ plan });
-    void storage.set(KEY, plan);
-  },
-  hydrate: async () => {
-    try {
-      const raw = await storage.get(KEY);
-      if (raw === 'free' || raw === 'pro' || raw === 'enterprise') set({ plan: raw });
-    } catch {}
-  },
+  setPlan: (plan) => set({ plan }),
+  hydrate: async () => {},
 }));

@@ -127,6 +127,10 @@ export const subscriptions = pgTable(
     status: subscriptionStatusEnum('status').notNull(),
     provider: providerEnum('provider').notNull(),
     providerSubscriptionId: text('provider_subscription_id'),
+    providerStatus: text('provider_status'),
+    trialEndsAt: timestamp('trial_ends_at', { withTimezone: true }),
+    graceEndsAt: timestamp('grace_ends_at', { withTimezone: true }),
+    cancelAtPeriodEnd: boolean('cancel_at_period_end').notNull().default(false),
     currentPeriodEnd: timestamp('current_period_end', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
@@ -148,6 +152,22 @@ export const invitations = pgTable('invitations', {
   expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
+
+export const entitlements = pgTable(
+  'entitlements',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    feature: text('feature').notNull(),
+    limit: integer('limit'),
+    enabled: boolean('enabled').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('entitlements_org_feature_uidx').on(t.organizationId, t.feature), index('entitlements_org_idx').on(t.organizationId)]
+);
 
 export const devices = pgTable('devices', {
   id: text('id').primaryKey(),

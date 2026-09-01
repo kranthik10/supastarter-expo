@@ -228,6 +228,9 @@ importers:
       '@paralleldrive/cuid2':
         specifier: ^2.3.1
         version: 2.3.1
+      '@repo/billing':
+        specifier: workspace:*
+        version: link:../billing
       '@repo/config':
         specifier: workspace:*
         version: link:../config
@@ -294,12 +297,18 @@ importers:
 
   packages/billing:
     dependencies:
-      '@repo/storage':
+      '@paralleldrive/cuid2':
+        specifier: ^2.2.2
+        version: 2.3.1
+      '@repo/database':
         specifier: workspace:*
-        version: link:../storage
+        version: link:../database
       '@repo/types':
         specifier: workspace:*
         version: link:../types
+      drizzle-orm:
+        specifier: ^0.44.2
+        version: 0.44.7(@types/pg@8.23.1)(kysely@0.29.5)(pg@8.23.0)
       zustand:
         specifier: ^5.0.15
         version: 5.0.15(@types/react@19.2.18)(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))

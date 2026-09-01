@@ -3,10 +3,11 @@ import { z } from 'zod';
 import superjson from 'superjson';
 import type { ApiContext } from './context';
 import { getDb } from '@repo/database';
-import { organizations, organizationMembers, invitations } from '@repo/database';
+import { organizations, organizationMembers, invitations, subscriptions } from '@repo/database';
 import { eq, and } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import { assertCan } from '@repo/permissions';
+import { syncEntitlementsForPlan, getEntitlement, listEntitlements } from '@repo/billing/entitlements.server';
 
 const t = initTRPC.context<ApiContext>().create({ transformer: superjson });
 
@@ -51,8 +52,11 @@ export const appRouter = router({
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const id = createId();
-        await db.insert(organizations).values({ id, name: input.name, slug: input.slug });
-        await db.insert(organizationMembers).values({ id: createId(), organizationId: id, userId: ctx.user!.id, role: 'owner' });
+        await db.transaction(async (tx) => {
+          await tx.insert(organizations).values({ id, name: input.name, slug: input.slug });
+          await tx.insert(organizationMembers).values({ id: createId(), organizationId: id, userId: ctx.user!.id, role: 'owner' });
+          await syncEntitlementsForPlan(tx, id, 'free');
+        });
         const [row] = await db.select().from(organizations).where(eq(organizations.id, id)).limit(1);
         return row;
       }),
@@ -145,6 +149,94 @@ export const appRouter = router({
           .delete(organizationMembers)
           .where(and(eq(organizationMembers.organizationId, input.organizationId), eq(organizationMembers.userId, input.userId)));
         return { ok: true };
+      }),
+  }),
+
+  billing: router({
+    getSubscription: protectedProcedure
+      .input(z.object({ organizationId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [member] = await db
+          .select()
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.organizationId, input.organizationId), eq(organizationMembers.userId, ctx.user!.id)))
+          .limit(1);
+        if (!member) throw new TRPCError({ code: 'FORBIDDEN' });
+        assertCan(member.role as never, 'billing.read');
+        const [sub] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, input.organizationId)).limit(1);
+        return sub ?? null;
+      }),
+
+    listEntitlements: protectedProcedure
+      .input(z.object({ organizationId: z.string() }))
+      .query(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [member] = await db
+          .select()
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.organizationId, input.organizationId), eq(organizationMembers.userId, ctx.user!.id)))
+          .limit(1);
+        if (!member) throw new TRPCError({ code: 'FORBIDDEN' });
+        assertCan(member.role as never, 'billing.read');
+        return listEntitlements(db, input.organizationId);
+      }),
+
+    getEntitlement: protectedProcedure
+      .input(z.object({ organizationId: z.string(), feature: z.enum(['projects.limit', 'members.limit', 'storage.gb', 'ai.tokens']) }))
+      .query(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [member] = await db
+          .select()
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.organizationId, input.organizationId), eq(organizationMembers.userId, ctx.user!.id)))
+          .limit(1);
+        if (!member) throw new TRPCError({ code: 'FORBIDDEN' });
+        assertCan(member.role as never, 'billing.read');
+        const ent = await getEntitlement(db, input.organizationId, input.feature as never);
+        return ent;
+      }),
+
+    updateSubscription: protectedProcedure
+      .input(z.object({ organizationId: z.string(), planId: z.enum(['free', 'pro', 'enterprise']) }))
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [member] = await db
+          .select()
+          .from(organizationMembers)
+          .where(and(eq(organizationMembers.organizationId, input.organizationId), eq(organizationMembers.userId, ctx.user!.id)))
+          .limit(1);
+        if (!member) throw new TRPCError({ code: 'FORBIDDEN' });
+        assertCan(member.role as never, 'billing.manage');
+        // Phase 3.1: without verified provider state (Stripe/RevenueCat webhook) a client must not be able
+        // to forge a paid subscription. Only free plan is allowed via this direct mutation.
+        // Paid plans require: Client → BillingProvider → verified provider → webhook → server sync (see docs/phase-3-saas-product-layer.md §12).
+        // For tests/internal tooling use syncEntitlementsForPlan directly (server helper), not this client procedure.
+        if (input.planId !== 'free') {
+          throw new TRPCError({
+            code: 'PRECONDITION_FAILED',
+            message: 'Billing provider not configured — paid plans require verified provider state',
+          });
+        }
+        const [existing] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, input.organizationId)).limit(1);
+        if (existing) {
+          await db
+            .update(subscriptions)
+            .set({ planId: input.planId, status: 'active', updatedAt: new Date(), cancelAtPeriodEnd: false, trialEndsAt: null, graceEndsAt: null })
+            .where(eq(subscriptions.organizationId, input.organizationId));
+        } else {
+          await db.insert(subscriptions).values({
+            id: createId(),
+            organizationId: input.organizationId,
+            planId: input.planId,
+            status: 'active',
+            provider: 'stripe',
+            currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          });
+        }
+        await syncEntitlementsForPlan(db, input.organizationId, input.planId as never);
+        const [updated] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, input.organizationId)).limit(1);
+        return updated;
       }),
   }),
 });
