@@ -1,6 +1,6 @@
 # Phase 3 Milestone 3.6 Delivery — Analytics
 
-**Status:** Locally implemented and validated; remote CI pending checkpoint
+**Status:** Implementation CI-verified; documentation closure pending
 **Baseline:** `7f6be9b`
 **Previous milestone:** Phase 3.5 Notifications
 **Scope boundary:** Analytics only. Phase 3.7 Monitoring/Sentry was not started.
@@ -118,9 +118,10 @@ Documentation:
 - `docs/phase-3-erd.md`
 - `docs/phase-3-saas-product-layer.md`
 
-## Remaining checkpoint fields
+## Remote checkpoint
 
-- Implementation commit: pending
+- Implementation commit: `60edc0a` — `feat: complete phase 3.6 analytics`
+- Implementation CI: `33571591060` — completed/success for head `60edc0ae6139b5c4fdeac1718cd795a9fec090aa`
 - Final documentation-closure commit: pending
 - Final GitHub Actions run: pending
 - Phase 3.7 Monitoring/Sentry: not started
