@@ -1,6 +1,6 @@
 # Phase 3 Milestone 3.5 Delivery — Notifications
 
-**Status:** IMPLEMENTED locally; ready for implementation commit and CI verification
+**Status:** IMPLEMENTED; implementation CI verified
 **Baseline:** `bba03eb`
 **Scope:** In-app notification history, push-token/device registration, server provider abstraction, preference enforcement, safe deep links, and thin mobile notification center
 
@@ -138,6 +138,7 @@ The service consumes Phase 3.3 `user_preferences`:
 - `git diff --check` — PASS.
 - `pnpm install --frozen-lockfile` — PASS.
 - Mobile bundle scan — PASS, zero matches for private notification/provider identifiers and no server notification module/database import in generated bundles.
+- GitHub Actions `33566334755` — PASS for implementation commit `f4eaf77`; remote lint, typecheck, test, build, and DB generate checks all completed successfully.
 
 ## Regression boundary
 
@@ -154,7 +155,7 @@ Phase 3.1 billing/entitlements, Phase 3.2 team/invitations/ownership transfer, P
 
 ## Checkpoint
 
-- Implementation commit: pending.
-- Implementation GitHub Actions run: pending.
+- Implementation commit: `f4eaf77` — `feat: complete phase 3.5 notifications`.
+- Implementation GitHub Actions run: `33566334755` — completed successfully for head `f4eaf77`.
 - Documentation closure commit: pending.
 - Final-head GitHub Actions run: pending.
