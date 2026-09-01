@@ -1,6 +1,6 @@
 # Phase 3 Milestone 3.6 Delivery — Analytics
 
-**Status:** Implementation CI-verified; documentation closure pending
+**Status:** Documentation closure CI-verified; final head verification pending
 **Baseline:** `7f6be9b`
 **Previous milestone:** Phase 3.5 Notifications
 **Scope boundary:** Analytics only. Phase 3.7 Monitoring/Sentry was not started.
@@ -122,6 +122,7 @@ Documentation:
 
 - Implementation commit: `60edc0a` — `feat: complete phase 3.6 analytics`
 - Implementation CI: `33571591060` — completed/success for head `60edc0ae6139b5c4fdeac1718cd795a9fec090aa`
-- Final documentation-closure commit: pending
-- Final GitHub Actions run: pending
+- Final documentation-closure commit: `d5d2a80` — `docs: close phase 3.6 delivery`
+- Documentation-closure CI: `33571865506` — completed/success for head `d5d2a803081ab98412c12dbe95a53ba27243852c`
+- Final CI documentation update: this commit; its exact head/run are verified separately below
 - Phase 3.7 Monitoring/Sentry: not started
