@@ -1,10 +1,12 @@
 # Phase 3 — SaaS Product Layer Architecture
 
-**Status:** Architecture / Specification — DO NOT IMPLEMENT YET
-**Baseline commit:** `5c1ceba` (Phase 2: app/backend + auth/org/RBAC + CI complete; EAS/Maestro deferred)
-**Date:** 2026-09-01
+**Status:** Phase 3.1 + Phase 3.2 implemented; remaining Phase 3 milestones are specification only
+**Historical baseline:** `5c1ceba` (Phase 2)
+**Phase 3.1 checkpoint:** `c0f54f7`; documentation closure `33daf39`; GitHub Actions `33539998678` PASS
+**Phase 3.2 active baseline:** `33daf39`
 **Repository:** `kranthik10/supastarter-expo` (public, main)
-**Validation at baseline:** `typecheck: PASS` (26), `lint: PASS` (14), `test: PASS` (4 files, 30 tests), `build: PASS` (expo export), CI `33453674804` PASS
+**Validation at historical baseline:** `typecheck: PASS` (26), `lint: PASS` (14), `test: PASS` (4 files, 30 tests), `build: PASS` (expo export), CI `33453674804` PASS
+**Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 local validation is recorded in `docs/phase-3-milestone-3.2-delivery.md`
 
 > This document is the Phase 3 blueprint. It extends Phase 0 (`docs/phase-0-technical-decisions.md` + `docs/adr/*` + `docs/erd.md`) and Phase 2 (`docs/phase-2-identity-saas-core.md` + `docs/phase-2-milestone-3-eas-maestro-ci.md`) without contradicting them. Where a conflict exists it is called out explicitly instead of silently changing a decision.
 
@@ -429,35 +431,38 @@ if (!ent.enabled) return <Paywall feature="projects" />;
 
 `owner` → full, `admin` → invite/remove/update org (not delete, not billing), `member` → read + `files.write`. No new role; no custom roles in Phase 3.
 
-### 14.2 Invitation lifecycle (extends existing `invitations` table)
+### 14.2 Invitation lifecycle (implemented in Milestone 3.2)
 
 ```
-create  → pending (email sent, token + optional 6-char code, expires 7d)
+create  → pending (token, expires 7d; email delivery reported separately)
         → accepted (creates organization_members, consumed)
-        → revoked (by inviter, before accept)
-        → expired (job or lazy check on accept)
-        ↘ (email already member) → CONFLICT before insert
+        → revoked (organization member or invited-user decline)
+        → expired (lazy transition on list/accept/decline/revoke)
 ```
 
-**New columns (see §8.2):** `status enum`, `respondedAt`, `code unique`.
+**Implemented columns:** `status enum`, `respondedAt`; no plaintext/code column. The secure token is the only redemption credential. New tokens are generated server-side with 32 random bytes and existing tokens remain valid. API normalizes email by trim + lowercase before membership/pending-invite checks.
 
 **tRPC procedures (server-enforced):**
 
-| Procedure | Permission | Effect |
-|-----------|------------|--------|
-| `invitations.create` | `members.invite` | Insert `invitations` (status `pending`, `token=cuid2`, `expiresAt=now+7d`), Resend email via `RESEND_API_KEY`, `audit_logs` |
-| `invitations.list` | `members.read` | List pending for org |
-| `invitations.revoke` | `members.invite` | Set `status='revoked'` (inviter or owner) |
-| `invitations.accept` | `publicProcedure` + session (or `protectedProcedure` if already signed in) | Validate `token`+`status=pending`+`expiresAt>now`, dedup `(orgId,userId)` unique, insert `organizationMembers` with `role=invitation.role`, set `status='accepted'` |
-| `invitations.decline` | session when accepting user == `email` owner | Set `status='revoked'` |
+| Procedure | Permission / identity | Effect |
+|-----------|----------------------|--------|
+| `invitations.create` | `members.invite` | Insert pending invitation, write `invitation.created` audit with SHA-256 token hash, call safe email provider seam, return `emailDelivered`/`emailStatus` separately |
+| `members.invite` | `members.invite` | Compatibility alias for `invitations.create` |
+| `invitations.list` | `members.read` | Lazy-expire stale rows, then list pending invitations without tokens |
+| `invitations.revoke` | `members.invite` | Pending-only org-scoped revoke; writes `invitation.revoked` |
+| `invitations.accept` | authenticated + verified email match | Validate token/status/expiry, enforce `members.limit`, insert membership and mark accepted in one transaction |
+| `invitations.decline` | authenticated + verified email match | Mark pending invitation revoked with `reason=declined`; writes distinct `invitation.declined` audit |
+| `members.list` | `members.read` | Return organization-scoped safe user profile fields, role, and joined timestamp |
+| `members.updateRole` | `members.update` (owner in current matrix) | Update only admin/member; owner changes require transfer |
+| `members.remove` | `members.remove` | Transactional removal; rejects self/owner invariant violations; writes `member.removed` |
 
-**Accept via deep link:** `mobile-saas-dev://invite/<token>` (dev scheme from `packages/config`) → screen calls `invitations.accept`. `members.remove` remains for post-accept removal; cannot revoke after accept (use remove).
+**Accept via deep link:** existing `/invite/[token]` route calls `invitations.accept` after the user signs in. The route never displays or logs the token as a diagnostic; app scheme remains the variant from `app.config.ts` (`mobile-saas-dev`, `mobile-saas-preview`, or `mobile-saas`).
 
-**Ownership transfer (new, scoped):**
+**Ownership transfer (implemented):**
 
-- `organizations.transferOwnership` — `owner` only — `update organizationMembers set role='admin' where userId=oldOwner`, `set role='owner' where userId=newOwner`, both in one transaction + `audit_logs`. Validates `newOwner` is a current member. Transfer is the only way to change an `owner`; `members.update` remains `owner`-only and cannot create a second owner ad-hoc beyond transfer.
+- `organizations.transferOwnership` is owner-only, validates the target is an existing non-owner member, and atomically updates old owner → admin and target → owner. It writes `organization.ownership_transferred`; exactly one owner is preserved.
 
-**Audit considerations:** every invite/create/revoke/accept/transfer writes `audit_logs` with `action`, `targetType='invitation'|'member'|'organization'`, `metadata={email, role, tokenHash}` (hash token, never log raw).
+**Audit/security:** lifecycle and team mutations write `audit_logs`; token metadata uses SHA-256, never the raw token. Invite persistence does not depend on email delivery. Current email implementation is a no-op provider returning `not_configured` until a server-side provider is supplied. Invitation create and redemption use a process-local interim rate limiter; distributed enforcement remains a hardening milestone requirement.
 
 ---
 

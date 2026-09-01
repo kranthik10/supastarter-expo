@@ -1,10 +1,11 @@
 import { pgTable, text, timestamp, pgEnum, boolean, integer, jsonb, index, uniqueIndex } from 'drizzle-orm/pg-core';
-import { relations } from 'drizzle-orm';
+import { relations, sql } from 'drizzle-orm';
 
 export const roleEnum = pgEnum('role', ['owner', 'admin', 'member']);
 export const planEnum = pgEnum('plan', ['free', 'pro', 'enterprise']);
 export const subscriptionStatusEnum = pgEnum('subscription_status', ['active', 'past_due', 'canceled', 'trialing', 'incomplete']);
 export const providerEnum = pgEnum('provider', ['apple', 'google', 'stripe', 'revenuecat']);
+export const invitationStatusEnum = pgEnum('invitation_status', ['pending', 'accepted', 'revoked', 'expired']);
 
 export const users = pgTable(
   'users',
@@ -138,20 +139,31 @@ export const subscriptions = pgTable(
   (t) => [index('subs_org_idx').on(t.organizationId)]
 );
 
-export const invitations = pgTable('invitations', {
-  id: text('id').primaryKey(),
-  organizationId: text('organization_id')
-    .notNull()
-    .references(() => organizations.id, { onDelete: 'cascade' }),
-  email: text('email').notNull(),
-  role: roleEnum('role').notNull().default('member'),
-  token: text('token').notNull().unique(),
-  invitedBy: text('invited_by')
-    .notNull()
-    .references(() => users.id),
-  expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const invitations = pgTable(
+  'invitations',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    email: text('email').notNull(),
+    role: roleEnum('role').notNull().default('member'),
+    token: text('token').notNull().unique(),
+    invitedBy: text('invited_by')
+      .notNull()
+      .references(() => users.id),
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+    status: invitationStatusEnum('status').notNull().default('pending'),
+    respondedAt: timestamp('responded_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('invitations_org_idx').on(t.organizationId),
+    uniqueIndex('invitations_pending_org_email_uidx')
+      .on(t.organizationId, t.email)
+      .where(sql`${t.status} = 'pending'`),
+  ]
+);
 
 export const entitlements = pgTable(
   'entitlements',

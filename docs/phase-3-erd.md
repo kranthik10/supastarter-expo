@@ -1,7 +1,7 @@
 # Phase 3 — ERD (Product Layer)
 
 > Delta to [`docs/erd.md`](./erd.md) and [`docs/phase-0-technical-decisions.md`](./phase-0-technical-decisions.md) §4.
-> Additive only — the 16 tables at `5c1ceba` are not renamed or deleted. New columns/tables are nullable or defaulted so existing migrations remain reversible. All IDs remain `text` (`cuid2`).
+> Additive only — the 16 tables at `5c1ceba` are not renamed or deleted. Phase 3.1 added `entitlements`; Phase 3.2 adds invitation lifecycle columns/indexes. New columns/tables are nullable or defaulted so existing migrations remain reversible. All IDs remain `text` (`cuid2`).
 
 ## Visual (Phase 3 — org-scoped SaaS)
 
@@ -99,16 +99,16 @@ Seeded per org from `plans` defaults; admin toggles override.
 
 | col | change | notes |
 |-----|--------|-------|
-| status | ADD `enum invitation_status` (`pending`,`accepted`,`revoked`,`expired`) default `pending` | Lifecycle beyond `expiresAt` |
-| responded_at | ADD `timestamptz nullable` | When accepted/revoked |
-| code | ADD `text nullable, unique where not null` | 6-char join code alternative to token |
-| token | unchanged unique | 48 hex `cuid2` |
+| status | ADD `enum invitation_status` (`pending`,`accepted`,`revoked`,`expired`) default `pending` | Lifecycle beyond `expiresAt`; `revoked` with audit `reason=declined` represents an invited user's decline without adding a fifth enum value |
+| responded_at | ADD `timestamptz nullable` | When accepted/revoked/expired |
+| code | **NOT IMPLEMENTED** | Rejected in Milestone 3.2; the cryptographically random token/deep link is sufficient and avoids a second brute-force redemption path |
+| token | unchanged unique; new tokens are 32 random bytes encoded as 64 hex chars | Existing tokens remain valid |
 | role, email, organization_id, invited_by, expires_at | unchanged | |
 
 Indexes:
 
-- `unique(organization_id, email) where status='pending'` — at most one pending invite per email per org (partial unique index).
-- `index(invitations, organization_id)` for list.
+- `unique(organization_id, email) where status='pending'` — at most one pending invite per normalized email per org (API trims/lowercases before lookup/insert).
+- `index(invitations, organization_id)` for list/revoke operations.
 
 ### files (delta)
 
