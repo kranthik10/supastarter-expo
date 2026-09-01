@@ -157,5 +157,6 @@ Phase 3.1 billing/entitlements, Phase 3.2 team/invitations/ownership transfer, P
 
 - Implementation commit: `f4eaf77` — `feat: complete phase 3.5 notifications`.
 - Implementation GitHub Actions run: `33566334755` — completed successfully for head `f4eaf77`.
-- Documentation closure commit: pending.
-- Final-head GitHub Actions run: pending.
+- Documentation closure commit: `556c215` — `docs: close phase 3.5 delivery`.
+- Documentation closure GitHub Actions run: `33566682502` — completed successfully for head `556c215`.
+- Final evidence commit: this documentation-only update; its GitHub Actions result is verified after push and reported below.
