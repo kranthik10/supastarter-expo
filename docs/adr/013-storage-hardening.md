@@ -1,9 +1,14 @@
 # ADR-013 — Storage hardening (scoped presign + confirm)
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-01
-- **Context:** Phase 0 ADR-008 chose R2/S3 presigned PUT so no secret reaches the bundle. Phase 3 must make the flow org-scoped and abuse-resistant.
-- **Decision:** `trpc.storage.createPresignedUrl` validates membership + `assertCan(files.write)` + MIME allowlist + size limits (10 MB default, gated by `entitlements.storage.gb`), inserts `files` row `status='pending'` with `key=org/<orgId>/<cuid2>-<sanitized>`, signs PUT (5–15m expiry) and returns `{ uploadUrl, key }`. Mobile PUTs to `uploadUrl`; `trpc.storage.confirmUpload` HEAD-verifies and sets `status='ready'` + public URL; orphans (`pending` + `expiresAt`) are GC'd. Private-by-default; presigned GET is generated server-side when needed.
-- **Alternatives:** Direct S3 creds in app (rejected — credential leak, bundle grep fails), upload through Hono body (rejected — doubles egress, no chunking).
-- **Consequences:** Server is the only signer; `files.organizationId` null means user-private; `files.delete` requires `assertCan(files.delete)`; no provider SDK in screens.
-
+- **Context:** Phase 0 ADR-008 chose R2/S3 presigned PUT so no secret reaches the bundle. Phase 3.4 needed to make the flow org-scoped, quota-aware, lifecycle-safe, and usable for private avatars.
+- **Decision:** `storage.createUploadIntent` validates membership + `assertCan(files.write)` for organization files, MIME allowlist, positive size, 10 MiB maximum, and `entitlements.storage.gb`. It locks the organization row and active file rows, counts ready bytes plus non-expired pending reservations, inserts `files.status='pending'`, generates a server-side key, and asks the server-only provider for a 10-minute presigned PUT. It returns only `{ fileId, uploadUrl, key, requiredHeaders, expiresAt }`.
+- **Confirmation:** `storage.confirmUpload` loads the metadata row, verifies ownership/scope and pending/unexpired state, calls provider `HEAD`, checks object existence/size/content type, then marks the row `ready`. A client cannot set `ready` or claim an upload by sending a boolean.
+- **Private access:** Storage is private by default. `storage.getDownloadUrl` verifies ownership or organization membership + `organization.read`, requires `ready`, and returns a 5-minute presigned GET. The existing required `files.url` column stores the opaque key/reference for compatibility; it is not treated as a public URL.
+- **Deletion:** `storage.deleteFile` authorizes first, deletes the remote object, then marks metadata `deleted`; provider failure is not reported as success. Organization operations write audit events without URLs, signatures, or credentials.
+- **Keys:** `org/<orgId>/<userId>/<cuid2>-<sanitized-name>` for organization files and `user/<userId>/<purpose>/<cuid2>-<sanitized-name>` for personal files. Avatar files use the private user `avatar` namespace and update the existing `users.image` reference only after confirmation.
+- **Provider:** `@repo/storage/server` contains the `StorageProvider` seam, AWS S3-compatible adapter for R2/S3 endpoints, and an explicit not-configured provider. Provider code is not exported through the mobile root and no storage secret is bundled.
+- **Cleanup:** `identifyExpiredPendingFiles` and `cleanupExpiredFiles` provide provider-independent orphan cleanup behavior. Scheduled execution, virus scanning, image transformations, and multipart/chunked uploads are deferred.
+- **Alternatives:** Direct S3 credentials in app (rejected — credential leak), upload through Hono body (rejected — unnecessary egress), permanent public objects for avatars (rejected — violates private-by-default), and a client-controlled object key (rejected — traversal/IDOR risk).
+- **Consequences:** R2 remains the primary target and S3-compatible endpoints are supported. Real R2/S3 upload verification is deferred when complete server credentials are unavailable; fake-provider and not-configured behavior are tested locally. Pending reservations conservatively protect quota under concurrent intent requests.

@@ -8,6 +8,7 @@ export const providerEnum = pgEnum('provider', ['apple', 'google', 'stripe', 're
 export const invitationStatusEnum = pgEnum('invitation_status', ['pending', 'accepted', 'revoked', 'expired']);
 export const localeEnum = pgEnum('locale', ['en', 'de']);
 export const themeEnum = pgEnum('theme', ['system', 'light', 'dark']);
+export const fileStatusEnum = pgEnum('file_status', ['pending', 'ready', 'deleted']);
 
 export const users = pgTable(
   'users',
@@ -220,18 +221,25 @@ export const pushTokens = pgTable('push_tokens', {
   createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
 });
 
-export const files = pgTable('files', {
-  id: text('id').primaryKey(),
-  organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
-  userId: text('user_id')
-    .notNull()
-    .references(() => users.id, { onDelete: 'cascade' }),
-  key: text('key').notNull().unique(),
-  url: text('url').notNull(),
-  contentType: text('content_type'),
-  size: integer('size'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+export const files = pgTable(
+  'files',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id').references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    key: text('key').notNull().unique(),
+    url: text('url').notNull(),
+    contentType: text('content_type'),
+    size: integer('size'),
+    status: fileStatusEnum('status').notNull().default('pending'),
+    expiresAt: timestamp('expires_at', { withTimezone: true }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('files_user_idx').on(t.userId), index('files_org_idx').on(t.organizationId), index('files_status_idx').on(t.status)]
+);
 
 export const notifications = pgTable(
   'notifications',

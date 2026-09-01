@@ -3,8 +3,8 @@ import { z } from 'zod';
 import superjson from 'superjson';
 import type { ApiContext } from './context';
 import { getDb } from '@repo/database';
-import { auditLogs, invitations, organizations, organizationMembers, sessions, subscriptions, userPreferences, users } from '@repo/database';
-import { and, desc, eq, lte, ne, sql } from 'drizzle-orm';
+import { auditLogs, files, invitations, organizations, organizationMembers, sessions, subscriptions, userPreferences, users } from '@repo/database';
+import { and, desc, eq, isNull, lte, ne, sql } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import { assertCan } from '@repo/permissions';
 import { getEntitlement, listEntitlements, syncEntitlementsForPlan } from '@repo/billing/entitlements.server';
@@ -22,6 +22,9 @@ import {
   type MemberRole,
 } from './team';
 import { getInvitationEmailProvider } from './email';
+import { cleanupExpiredFiles, getOrganizationStorageUsage } from './storage-service';
+import { getStorageProvider, StorageProviderError, type StorageProvider } from '@repo/storage/server';
+import { buildObjectKey, canConfirmFile, canReserveStorage, DOWNLOAD_URL_EXPIRY_SECONDS, storageLimitBytes, UPLOAD_URL_EXPIRY_SECONDS, validateUploadMetadata } from '@repo/storage/policy';
 import {
   canDeleteAccount,
   defaultUserPreferences,
@@ -102,6 +105,16 @@ const preferencesPatchSchema = z
   })
   .strict();
 
+const storageIntentSchema = z
+  .object({
+    organizationId: z.string().min(1).optional(),
+    filename: z.string().trim().min(1).max(255),
+    contentType: z.string().trim().toLowerCase().min(1),
+    size: z.number().int(),
+    purpose: z.enum(['avatar']).optional(),
+  })
+  .strict();
+
 function toPublicPreferences(row: any): UserPreferences {
   return {
     locale: row.locale,
@@ -131,16 +144,66 @@ async function getOrCreateUserPreferences(db: any, userId: string): Promise<User
   }
 }
 
-function safeProfile(user: any) {
+function safeProfile(user: any, avatarFileId: string | null = null) {
   return {
     id: user.id,
     email: user.email,
     emailVerified: user.emailVerified,
     name: user.name,
     image: user.image,
+    avatarFileId,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,
   };
+}
+
+async function safeProfileWithAvatar(db: any, user: any) {
+  let avatarFileId: string | null = null;
+  if (typeof user.image === 'string' && isUserAvatarKey(user.image, user.id)) {
+    const [avatar] = await db
+      .select({ id: files.id })
+      .from(files)
+      .where(and(eq(files.key, user.image), eq(files.userId, user.id), eq(files.status, 'ready')))
+      .limit(1);
+    avatarFileId = avatar?.id ?? null;
+  }
+  return safeProfile(user, avatarFileId);
+}
+
+function mapStorageProviderError(error: unknown): never {
+  if (error instanceof StorageProviderError && error.code === 'STORAGE_NOT_CONFIGURED') {
+    reasonError('storage_not_configured');
+  }
+  throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'storage_provider_unavailable' });
+}
+
+async function getFileById(db: any, fileId: string) {
+  const [file] = await db.select().from(files).where(eq(files.id, fileId)).limit(1);
+  if (!file) throw new TRPCError({ code: 'NOT_FOUND', message: 'file_not_found' });
+  return file;
+}
+
+async function authorizeFileAccess(
+  db: any,
+  file: typeof files.$inferSelect,
+  ctx: ApiContext,
+  permission: Parameters<typeof assertCan>[1] | null
+): Promise<void> {
+  if (file.organizationId === null) {
+    if (file.userId !== ctx.user!.id) throw new TRPCError({ code: 'FORBIDDEN', message: 'file_forbidden' });
+    return;
+  }
+  const [member] = await db
+    .select()
+    .from(organizationMembers)
+    .where(and(eq(organizationMembers.organizationId, file.organizationId), eq(organizationMembers.userId, ctx.user!.id)))
+    .limit(1);
+  if (!member) throw new TRPCError({ code: 'FORBIDDEN', message: 'file_forbidden' });
+  if (permission) requirePermission(member.role as MemberRole, permission);
+}
+
+function isUserAvatarKey(key: string, userId: string): boolean {
+  return key.startsWith(`user/${userId}/avatar/`);
 }
 
 async function expirePendingInvitations(db: any, organizationId: string, now: Date): Promise<void> {
@@ -713,8 +776,268 @@ export const appRouter = router({
       }),
   }),
 
+  storage: router({
+    createUploadIntent: protectedProcedure
+      .input(storageIntentSchema)
+      .mutation(async ({ ctx, input }) => {
+        const validation = validateUploadMetadata(input);
+        if (!validation.ok) throw new TRPCError({ code: 'BAD_REQUEST', message: validation.reason });
+        if (input.purpose === 'avatar' && !input.contentType.startsWith('image/')) {
+          throw new TRPCError({ code: 'BAD_REQUEST', message: 'avatar_must_be_an_image' });
+        }
+
+        const db = ctx.db ?? getDb();
+        let organizationMember: typeof organizationMembers.$inferSelect | null = null;
+        if (input.organizationId) {
+          organizationMember =
+            (await db
+              .select()
+              .from(organizationMembers)
+              .where(and(eq(organizationMembers.organizationId, input.organizationId), eq(organizationMembers.userId, ctx.user!.id)))
+              .limit(1))[0] ?? null;
+          if (!organizationMember) throw new TRPCError({ code: 'FORBIDDEN', message: 'organization_forbidden' });
+          requirePermission(organizationMember.role as MemberRole, 'files.write');
+        }
+
+        const provider = getStorageProvider();
+        if (!provider.configured) reasonError('storage_not_configured');
+        const fileId = createId();
+        const key = buildObjectKey({
+          scope: input.organizationId ? 'org' : 'user',
+          organizationId: input.organizationId,
+          userId: ctx.user!.id,
+          fileId,
+          filename: input.filename,
+          purpose: input.purpose,
+        });
+        const now = new Date();
+        const expiresAt = new Date(now.getTime() + UPLOAD_URL_EXPIRY_SECONDS * 1_000);
+
+        const file = await db.transaction(async (tx: any) => {
+          if (input.organizationId) {
+            const entitlement = await getEntitlement(tx, input.organizationId, 'storage.gb');
+            if (!entitlement?.enabled) reasonError('storage_disabled');
+            const usage = await getOrganizationStorageUsage(tx, input.organizationId, now, true);
+            const quota = canReserveStorage({
+              limitBytes: storageLimitBytes(entitlement.limit),
+              readyBytes: usage.readyBytes,
+              pendingBytes: usage.pendingBytes,
+              requestedBytes: input.size,
+            });
+            if (!quota.ok) reasonError(quota.reason);
+          }
+          const [created] = await tx
+            .insert(files)
+            .values({
+              id: fileId,
+              organizationId: input.organizationId ?? null,
+              userId: ctx.user!.id,
+              key,
+              // Existing column retained for compatibility; private rows store an opaque object reference, not a public URL.
+              url: key,
+              contentType: input.contentType,
+              size: input.size,
+              status: 'pending',
+              expiresAt,
+              updatedAt: now,
+            })
+            .returning();
+          if (input.organizationId) {
+            await writeAudit(tx, {
+              organizationId: input.organizationId,
+              userId: ctx.user!.id,
+              action: 'file.upload_created',
+              targetType: 'file',
+              targetId: fileId,
+              metadata: { contentType: input.contentType, size: input.size },
+            });
+          }
+          return created;
+        });
+
+        let signed: Awaited<ReturnType<StorageProvider['createPresignedUpload']>>;
+        try {
+          signed = await provider.createPresignedUpload({ key, contentType: input.contentType, expiresInSeconds: 600 });
+        } catch (error) {
+          await db
+            .update(files)
+            .set({ status: 'deleted', expiresAt: null, updatedAt: new Date() })
+            .where(and(eq(files.id, fileId), eq(files.status, 'pending')));
+          mapStorageProviderError(error);
+        }
+        return {
+          fileId: file.id,
+          key: file.key,
+          uploadUrl: signed!.uploadUrl,
+          requiredHeaders: signed!.headers,
+          expiresAt: file.expiresAt ?? signed!.expiresAt,
+        };
+      }),
+
+    confirmUpload: protectedProcedure
+      .input(z.object({ fileId: z.string().min(1), purpose: z.enum(['avatar']).optional() }).strict())
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const provider = getStorageProvider();
+        if (!provider.configured) reasonError('storage_not_configured');
+        const file = await getFileById(db, input.fileId);
+        await authorizeFileAccess(db, file, ctx, file.organizationId ? 'files.write' : null);
+        if (input.purpose === 'avatar' && (file.organizationId !== null || !isUserAvatarKey(file.key, ctx.user!.id) || !file.contentType?.startsWith('image/'))) {
+          throw new TRPCError({ code: 'FORBIDDEN', message: 'avatar_forbidden' });
+        }
+        const lifecycle = canConfirmFile(file.status as 'pending' | 'ready' | 'deleted', file.expiresAt, new Date());
+        if (!lifecycle.ok) reasonError(lifecycle.reason);
+
+        let remote: Awaited<ReturnType<StorageProvider['headObject']>>;
+        try {
+          remote = await provider.headObject({ key: file.key });
+        } catch (error) {
+          mapStorageProviderError(error);
+        }
+        if (!remote!.exists) throw new TRPCError({ code: 'NOT_FOUND', message: 'storage_object_missing' });
+        if (remote!.size !== file.size || remote!.contentType !== file.contentType) {
+          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'upload_metadata_mismatch' });
+        }
+
+        const result = await db.transaction(async (tx: any) => {
+          const locked = await getFileById(tx, input.fileId);
+          const lockedLifecycle = canConfirmFile(locked.status as 'pending' | 'ready' | 'deleted', locked.expiresAt, new Date());
+          if (!lockedLifecycle.ok) reasonError(lockedLifecycle.reason);
+          let previousAvatarKey: string | null = null;
+          if (input.purpose === 'avatar') {
+            const [currentUser] = await tx.select({ image: users.image }).from(users).where(eq(users.id, ctx.user!.id)).limit(1);
+            if (!currentUser) throw new TRPCError({ code: 'NOT_FOUND', message: 'user_not_found' });
+            previousAvatarKey = currentUser.image;
+          }
+          const [updatedFile] = await tx
+            .update(files)
+            .set({ status: 'ready', expiresAt: null, updatedAt: new Date() })
+            .where(and(eq(files.id, input.fileId), eq(files.status, 'pending')))
+            .returning();
+          if (!updatedFile) throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'file_not_pending' });
+          if (input.purpose === 'avatar') {
+            await tx.update(users).set({ image: updatedFile.key, updatedAt: new Date() }).where(eq(users.id, ctx.user!.id));
+          }
+          if (updatedFile.organizationId) {
+            await writeAudit(tx, {
+              organizationId: updatedFile.organizationId,
+              userId: ctx.user!.id,
+              action: 'file.upload_confirmed',
+              targetType: 'file',
+              targetId: updatedFile.id,
+              metadata: { contentType: updatedFile.contentType, size: updatedFile.size },
+            });
+          }
+          return { file: updatedFile, previousAvatarKey };
+        });
+
+        let avatarCleanup: 'not_applicable' | 'deleted' | 'deferred' = 'not_applicable';
+        if (result.previousAvatarKey && isUserAvatarKey(result.previousAvatarKey, ctx.user!.id) && result.previousAvatarKey !== result.file.key) {
+          try {
+            await provider.deleteObject({ key: result.previousAvatarKey });
+            await db
+              .update(files)
+              .set({ status: 'deleted', expiresAt: null, updatedAt: new Date() })
+              .where(and(eq(files.key, result.previousAvatarKey), eq(files.userId, ctx.user!.id), eq(files.status, 'ready')));
+            avatarCleanup = 'deleted';
+          } catch {
+            // Keep the old metadata ready so it continues to count against quota if remote cleanup fails.
+            avatarCleanup = 'deferred';
+          }
+        }
+        return { fileId: result.file.id, key: result.file.key, status: result.file.status, avatarCleanup };
+      }),
+
+    getDownloadUrl: protectedProcedure
+      .input(z.object({ fileId: z.string().min(1) }).strict())
+      .query(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const provider = getStorageProvider();
+        if (!provider.configured) reasonError('storage_not_configured');
+        const file = await getFileById(db, input.fileId);
+        await authorizeFileAccess(db, file, ctx, file.organizationId ? 'organization.read' : null);
+        if (file.status !== 'ready') reasonError('file_not_ready');
+        try {
+          const signed = await provider.createPresignedDownload({ key: file.key, expiresInSeconds: DOWNLOAD_URL_EXPIRY_SECONDS });
+          return { fileId: file.id, downloadUrl: signed.downloadUrl, expiresAt: signed.expiresAt };
+        } catch (error) {
+          mapStorageProviderError(error);
+        }
+      }),
+
+    listFiles: protectedProcedure
+      .input(z.object({ organizationId: z.string().min(1).optional() }).strict())
+      .query(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        if (input.organizationId) {
+          const [member] = await db
+            .select()
+            .from(organizationMembers)
+            .where(and(eq(organizationMembers.organizationId, input.organizationId), eq(organizationMembers.userId, ctx.user!.id)))
+            .limit(1);
+          if (!member) throw new TRPCError({ code: 'FORBIDDEN', message: 'organization_forbidden' });
+          requirePermission(member.role as MemberRole, 'organization.read');
+        }
+        const rows = await db
+          .select({
+            id: files.id,
+            organizationId: files.organizationId,
+            key: files.key,
+            contentType: files.contentType,
+            size: files.size,
+            status: files.status,
+            expiresAt: files.expiresAt,
+            createdAt: files.createdAt,
+            updatedAt: files.updatedAt,
+          })
+          .from(files)
+          .where(
+            input.organizationId
+              ? and(eq(files.organizationId, input.organizationId), ne(files.status, 'deleted'))
+              : and(isNull(files.organizationId), eq(files.userId, ctx.user!.id), ne(files.status, 'deleted'))
+          )
+          .orderBy(desc(files.createdAt));
+        return rows;
+      }),
+
+    deleteFile: protectedProcedure
+      .input(z.object({ fileId: z.string().min(1) }).strict())
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const provider = getStorageProvider();
+        if (!provider.configured) reasonError('storage_not_configured');
+        const file = await getFileById(db, input.fileId);
+        await authorizeFileAccess(db, file, ctx, file.organizationId ? 'files.delete' : null);
+        if (file.status === 'deleted') throw new TRPCError({ code: 'CONFLICT', message: 'file_already_deleted' });
+        try {
+          await provider.deleteObject({ key: file.key });
+        } catch {
+          throw new TRPCError({ code: 'INTERNAL_SERVER_ERROR', message: 'storage_delete_failed' });
+        }
+        const [deleted] = await db
+          .update(files)
+          .set({ status: 'deleted', expiresAt: null, updatedAt: new Date() })
+          .where(and(eq(files.id, file.id), ne(files.status, 'deleted')))
+          .returning();
+        if (!deleted) throw new TRPCError({ code: 'CONFLICT', message: 'file_already_deleted' });
+        if (deleted.organizationId) {
+          await writeAudit(db, {
+            organizationId: deleted.organizationId,
+            userId: ctx.user!.id,
+            action: 'file.deleted',
+            targetType: 'file',
+            targetId: deleted.id,
+          });
+        }
+        return { ok: true as const, fileId: deleted.id, status: deleted.status };
+      }),
+  }),
+
   settings: router({
-    getProfile: protectedProcedure.query(({ ctx }) => safeProfile(ctx.user)),
+    getProfile: protectedProcedure.query(async ({ ctx }) => {
+      const db = ctx.db ?? getDb();
+      return safeProfileWithAvatar(db, ctx.user);
+    }),
 
     updateProfile: protectedProcedure
       .input(profilePatchSchema)

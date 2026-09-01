@@ -1,51 +1,57 @@
-import { api } from '../api/client';
+import { trpc } from '@repo/api';
+import { inferContentType, validateAvatarAsset } from './client-policy';
 
 export type UploadedFile = {
-  url: string;
+  fileId: string;
   key: string;
+  contentType: string;
+  size: number;
+  status: 'ready';
 };
 
-type PresignResponse = {
-  uploadUrl: string;
-  key: string;
-  publicUrl: string;
+type UploadOptions = {
+  contentType?: string | null;
+  filename?: string;
+  size?: number | null;
+  organizationId?: string;
+  purpose?: 'avatar';
 };
 
-/**
- * Uploads a local file through a presigned-URL flow:
- * 1. ask the backend for an upload URL (POST /files/presign)
- * 2. PUT the raw bytes to object storage (S3, R2, MinIO, …)
- * 3. return the public URL
- *
- * Works with any backend that implements POST /files/presign, e.g.:
- *   { "contentType": "image/jpeg", "size": 12345 }
- *   → { "uploadUrl": "…", "key": "…", "publicUrl": "…" }
- */
-export async function uploadFile(
-  uri: string,
-  options: { contentType?: string } = {}
-): Promise<UploadedFile> {
-  const contentType = options.contentType ?? 'application/octet-stream';
+export async function uploadFile(uri: string, options: UploadOptions = {}): Promise<UploadedFile> {
+  const filename = options.filename ?? uri.split('/').pop() ?? 'file';
+  const fileResponse = await fetch(uri);
+  if (!fileResponse.ok) throw new Error(`Local file read failed (${fileResponse.status})`);
+  const blob = await fileResponse.blob();
+  const contentType = inferContentType(filename, options.contentType ?? blob.type);
+  if (!contentType) throw new Error('unsupported_file_type');
+  const size = options.size ?? blob.size;
+  if (!Number.isSafeInteger(size) || size <= 0) throw new Error('invalid_size');
+  if (options.purpose === 'avatar') {
+    const avatarValidation = validateAvatarAsset({ contentType, size });
+    if (!avatarValidation.ok) throw new Error(avatarValidation.reason);
+  }
 
-  const presign = await api.post<PresignResponse>('/files/presign', {
+  const intent = await trpc.storage.createUploadIntent.mutate({
+    organizationId: options.organizationId,
+    filename,
     contentType,
-    fileName: uri.split('/').pop() ?? 'file',
+    size,
+    purpose: options.purpose,
   });
-
-  const fileRes = await fetch(uri);
-  const bytes = await fileRes.blob();
-
-  const uploadRes = await fetch(presign.uploadUrl, {
+  const uploadResponse = await fetch(intent.uploadUrl, {
     method: 'PUT',
-    headers: { 'Content-Type': contentType },
-    body: bytes,
+    headers: intent.requiredHeaders,
+    body: blob,
   });
+  if (!uploadResponse.ok) throw new Error(`Upload failed (${uploadResponse.status})`);
 
-  if (!uploadRes.ok) throw new Error(`Upload failed (${uploadRes.status})`);
-
-  return { url: presign.publicUrl, key: presign.key };
+  const confirmed = await trpc.storage.confirmUpload.mutate({
+    fileId: intent.fileId,
+    purpose: options.purpose,
+  });
+  return { fileId: confirmed.fileId, key: confirmed.key, contentType, size, status: 'ready' };
 }
 
-export async function deleteFile(key: string): Promise<void> {
-  await api.delete(`/files/${encodeURIComponent(key)}`);
+export async function uploadAvatar(uri: string, options: { filename?: string; contentType?: string | null; size?: number | null } = {}) {
+  return uploadFile(uri, { ...options, purpose: 'avatar' });
 }

@@ -72,6 +72,7 @@ export default ({ config }: ConfigContext): ExpoConfig => {
       ],
       'expo-secure-store',
       'expo-localization',
+      'expo-image-picker',
     ],
     experiments: {
       typedRoutes: true,

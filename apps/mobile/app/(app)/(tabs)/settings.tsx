@@ -3,12 +3,14 @@ import { View, StyleSheet, Alert, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import * as ImagePicker from 'expo-image-picker';
 import { LogOut } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import { Screen, Card, Text, Button, SegmentedControl, Avatar, ListRow, Input } from '@repo/ui';
 import { useTheme } from '@/lib/use-theme';
 import { useAuth } from '@repo/auth';
 import { useSettings, type ThemeMode, type Locale } from '@/lib/settings-store';
+import { uploadAvatar } from '@/lib/storage/files';
 import { trpc } from '@repo/api';
 
 type SessionSummary = {
@@ -42,6 +44,7 @@ export default function Settings() {
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [passwordLoading, setPasswordLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
 
   const showError = (error: unknown) => {
     Alert.alert(t('settings.actionFailed'), error instanceof Error ? error.message : t('settings.unknownError'));
@@ -51,6 +54,11 @@ export default function Settings() {
     queryKey: ['settings', 'profile'],
     queryFn: () => trpc.settings.getProfile.query(),
     enabled: !!user,
+  });
+  const avatarDownloadQuery = useQuery({
+    queryKey: ['settings', 'avatar', profileQuery.data?.avatarFileId],
+    queryFn: () => trpc.storage.getDownloadUrl.query({ fileId: profileQuery.data!.avatarFileId! }),
+    enabled: !!profileQuery.data?.avatarFileId,
   });
   const preferencesQuery = useQuery({
     queryKey: ['settings', 'preferences'],
@@ -94,11 +102,38 @@ export default function Settings() {
 
   useEffect(() => {
     if (profileQuery.error) showError(profileQuery.error);
+    if (avatarDownloadQuery.error) showError(avatarDownloadQuery.error);
     if (preferencesQuery.error) showError(preferencesQuery.error);
     if (sessionsQuery.error) showError(sessionsQuery.error);
     // Query errors are stable until the next fetch; each error is shown once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileQuery.error, preferencesQuery.error, sessionsQuery.error]);
+  }, [profileQuery.error, avatarDownloadQuery.error, preferencesQuery.error, sessionsQuery.error]);
+
+  const pickAvatar = async () => {
+    setAvatarLoading(true);
+    try {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) {
+        Alert.alert(t('settings.actionFailed'), t('settings.mediaPermissionRequired'));
+        return;
+      }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.9,
+      });
+      if (result.canceled || !result.assets[0]) return;
+      const asset = result.assets[0];
+      await uploadAvatar(asset.uri, { filename: asset.fileName ?? undefined, contentType: asset.mimeType, size: asset.fileSize });
+      await queryClient.invalidateQueries({ queryKey: ['settings', 'profile'] });
+      Alert.alert(t('settings.avatarSaved'));
+    } catch (error) {
+      showError(error);
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
 
   const saveProfile = async () => {
     const name = profileName.trim();
@@ -191,6 +226,8 @@ export default function Settings() {
 
   const version = Constants.expoConfig?.version ?? '1.0.0';
   const displayName = profileQuery.data?.name ?? user?.name ?? user?.email?.split('@')[0] ?? t('common.user');
+  const storedImage = profileQuery.data?.image ?? user?.image ?? null;
+  const avatarImage = avatarDownloadQuery.data?.downloadUrl ?? (storedImage?.startsWith('user/') ? undefined : storedImage ?? undefined);
   const sessions = (sessionsQuery.data ?? []) as SessionSummary[];
   const sessionLoading = sessionsQuery.isFetching || revokeSessionMutation.isPending || revokeOtherSessionsMutation.isPending;
   const preferenceLoading = preferencesQuery.isFetching || updatePreferencesMutation.isPending;
@@ -204,10 +241,11 @@ export default function Settings() {
       <Text variant="h3" style={styles.section}>{t('settings.profile')}</Text>
       <Card style={styles.account}>
         <ListRow
-          leading={<Avatar name={displayName} image={profileQuery.data?.image ?? user?.image ?? undefined} size={48} />}
+          leading={<Avatar name={displayName} image={avatarImage} size={48} />}
           title={displayName}
           subtitle={profileQuery.data?.email ?? user?.email ?? ''}
         />
+        <Button label={t('settings.changeAvatar')} onPress={() => void pickAvatar()} loading={avatarLoading} variant="ghost" full />
         <Input label={t('settings.name')} value={profileName} onChangeText={setProfileName} maxLength={120} />
         <Button label={t('settings.save')} onPress={() => void saveProfile()} loading={profileLoading} full />
       </Card>

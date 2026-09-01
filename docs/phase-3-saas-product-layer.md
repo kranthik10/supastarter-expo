@@ -1,13 +1,14 @@
 # Phase 3 — SaaS Product Layer Architecture
 
-**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 implemented; remaining Phase 3 milestones are specification only
+**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 implemented; remaining Phase 3 milestones are specification only
 **Historical baseline:** `5c1ceba` (Phase 2)
 **Phase 3.1 checkpoint:** `c0f54f7`; documentation closure `33daf39`; GitHub Actions `33539998678` PASS
 **Phase 3.2 active baseline:** `f7517ae`; GitHub Actions `33544316656` PASS
-**Phase 3.3 active implementation:** User Settings local validation recorded in `docs/phase-3-milestone-3.3-delivery.md`
+**Phase 3.3 active implementation:** User Settings recorded in `docs/phase-3-milestone-3.3-delivery.md`
+**Phase 3.4 active implementation:** Storage recorded in `docs/phase-3-milestone-3.4-delivery.md`
 **Repository:** `kranthik10/supastarter-expo` (public, main)
 **Validation at historical baseline:** `typecheck: PASS` (26), `lint: PASS` (14), `test: PASS` (4 files, 30 tests), `build: PASS` (expo export), CI `33453674804` PASS
-**Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 CI `33544316656` PASS; Phase 3.3 local validation is recorded in `docs/phase-3-milestone-3.3-delivery.md`
+**Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 CI `33544316656` PASS; Phase 3.3 local validation is recorded in `docs/phase-3-milestone-3.3-delivery.md`; Phase 3.4 local validation is recorded in `docs/phase-3-milestone-3.4-delivery.md`
 
 > This document is the Phase 3 blueprint. It extends Phase 0 (`docs/phase-0-technical-decisions.md` + `docs/adr/*` + `docs/erd.md`) and Phase 2 (`docs/phase-2-identity-saas-core.md` + `docs/phase-2-milestone-3-eas-maestro-ci.md`) without contradicting them. Where a conflict exists it is called out explicitly instead of silently changing a decision.
 
@@ -31,7 +32,7 @@ Phase 3 delivers **primitives, not a demo app**: typed APIs, server-enforced rul
 | Organizations + members (server assigns `owner`) | COMPLETE | `packages/api/src/router.ts` `organizations.*` |
 | RBAC (`owner/admin/member`, `can()/assertCan()`, matrix) | COMPLETE (30 tests, 18 RBAC) | `packages/permissions`, `packages/types` |
 | Billing config (local Zustand, `plans` `free/pro/enterprise`) | STUB | `packages/billing` (no provider calls, no webhook) |
-| Storage (presign stub) | STUB | `packages/storage` |
+| Storage (presigned upload + metadata + private access) | IMPLEMENTED (fake/not-configured provider; real R2 deferred) | `packages/storage`, `packages/api` |
 | Notifications (push stub) | STUB | `packages/notifications` |
 | Analytics (console provider) | STUB | `packages/analytics` |
 | CI (GitHub Actions, Node 24, pnpm 11.24) | COMPLETE | `.github/workflows/ci.yml`, runs `33453674804` PASS |
@@ -194,14 +195,14 @@ The 16 tables from `packages/database/src/schema.ts` at `5c1ceba` remain exactly
 | Invites | `invitations.status enum('pending','accepted','revoked','expired')` + `responded_at` | `addColumn`/`pgEnum` | Lifecycle beyond token expiry |
 | Invites | `invitations.code text unique` (short 6-char join code, nullable) | `addColumn + unique` | Mobile-friendly alternative to token URL |
 | Audit | `audit_logs.idempotency_key text unique nullable` | `addColumn` | Webhook idempotency |
-| Storage | `files.mime_allowed boolean generated` or check via app layer | — | Validation, not DB enum |
-| Storage | `files.status enum('pending','ready','deleted') default 'pending'` | `addColumn` | Presign→confirm flows |
-| Storage | `files.expires_at timestamptz nullable` | `addColumn` | Orphan cleanup |
+| Storage | `files.status enum('pending','ready','deleted') default 'pending'` | `addColumn` | Implemented in migration `0004_real_boomerang.sql`; presign→HEAD-confirm→delete lifecycle |
+| Storage | `files.expires_at timestamptz nullable` + `files.updated_at timestamptz not null default now()` | `addColumn` | Pending reservation/orphan cleanup and lifecycle timestamps |
+| Storage | `files.user_id`, `files.organization_id`, `files.status` indexes | `createIndex` | File metadata/quota hot paths |
 | Notifications | `notifications.category text nullable` | `addColumn` | Category routing |
 | Notifications | `push_tokens.invalidated_at timestamptz nullable` | `addColumn` | Token lifecycle |
-| Users | `users.avatar_url text nullable` (alias of `image`, normalized) | `addColumn` | Avatar via R2 |
-| Users | `users.deleted_at timestamptz nullable` | `addColumn` | Soft delete for account deletion |
-| Users | `user_preferences` (new) | `createTable` | Notification + locale prefs per user, org overrides optional |
+| Users | `users.avatar_url text nullable` (alias of `image`, normalized) | **REJECTED** | Existing `users.image` is canonical; private avatar upload stores an opaque key there |
+| Users | `users.deleted_at timestamptz nullable` | **DEFERRED** | Auth-aware soft-delete/grace lifecycle not implemented |
+| Users | `user_preferences` (new) | `createTable` | Implemented in Phase 3.3 for user preferences |
 
 **Example migration (illustrative, not executed in spec phase):**
 
@@ -470,33 +471,47 @@ create  → pending (token, expires 7d; email delivery reported separately)
 
 ## 15. Storage architecture
 
-**Invariant:** no `R2_*`/`S3_*` secret reaches the bundle. All bucket access is server-mediated presigned PUT.
+**Status:** Implemented in Milestone 3.4, with real external provider upload deferred until server credentials are configured.
+
+**Invariant:** no `R2_*`/`S3_*` secret reaches the bundle. All bucket access is server-mediated presigning; storage is private by default.
 
 **Flow:**
 
 ```
-Mobile — useStorage()
-  1. trpc.storage.createPresignedUrl({ orgId, contentType, size, name })
-       → server: check cans → validate MIME/size → create files row status='pending', key=org/<orgId>/<cuid2>-<sanitized>
-                  → sign PUT with R2/S3 SDK (private env) → return { uploadUrl, key, expiresAt } (expires 5–15m)
-  2. PUT file bytes to uploadUrl (no auth header, provider validates signature)
-  3. trpc.storage.confirmUpload({ key }) → server verifies upload exists (HEAD via R2), set files.status='ready', url=R2_PUBLIC_BASE_URL/<key>, audit_logs
-  4. trpc.storage.deleteFile({ key }) → assertCan(files.delete) → set status='deleted' + delete object (or lazy GC via expiresAt)
+Mobile — uploadAvatar()/storage helper
+  1. trpc.storage.createUploadIntent({ organizationId?, filename, contentType, size, purpose? })
+       → server: derive user → validate MIME/size → check membership/RBAC
+                  → lock organization/quota rows → count ready + non-expired pending bytes
+                  → create files row status='pending', server key, expiresAt
+                  → sign PUT with server-only R2/S3 provider → return { fileId, uploadUrl, key, requiredHeaders, expiresAt }
+  2. PUT file bytes directly to uploadUrl with required headers (no provider credentials)
+  3. trpc.storage.confirmUpload({ fileId, purpose? })
+       → server loads owned metadata → provider HEAD verifies existence, size, content type
+       → set files.status='ready'; avatar purpose also updates users.image to the opaque key
+  4. trpc.storage.getDownloadUrl({ fileId })
+       → server authorizes private/org scope and ready status → return 5-minute signed GET
+  5. trpc.storage.deleteFile({ fileId })
+       → authorize → remote delete → set files.status='deleted'; audit org operations
 ```
 
-**Authorization:** `assertCan(role, 'files.write')` for create/confirm; `assertCan(role, 'files.delete')` for delete. Org-scoped: `organizationId` from membership, not client-supplied file owner.
+**Authorization:** organization uploads require membership + `assertCan(role, 'files.write')`; organization downloads require membership + `organization.read`; organization deletion requires `files.delete`. Personal files force `organizationId = null` and require exact `file.userId == ctx.user.id`. File id/key knowledge alone never grants access.
 
 **MIME + size validation (server, never client trust):**
 
-- Allowlist: `image/jpeg, image/png, image/webp, application/pdf` (configurable via `packages/config`).
-- Size: default 10 MB per file, 100 MB per org total (enforced via `entitlements` limit `storage.gb` when configured).
-- Filename sanitization: strip `..`, control chars, normalize to `key` via `createId()` + sanitized basename.
+- Allowlist: `image/jpeg`, `image/png`, `image/webp`, `application/pdf`.
+- Size: positive integer up to 10 MiB per file; avatar purpose must use an image MIME.
+- Filename sanitization: strip path separators, `..`, controls, and unsafe characters; object uniqueness comes from server-generated cuid2.
 
-**File metadata (columns in §8.2):** `organizationId nullable` (user-private when null), `userId`, `key unique`, `url`, `contentType`, `size`, `status`, `expiresAt`.
+**Quota:** organization `entitlements.storage.gb` is enforced server-side. Usage is ready bytes + non-expired pending reservation bytes + requested bytes; organization-row/file-row locks serialize concurrent intent requests. Deleted rows and expired pending reservations do not count. Free/pro/enterprise defaults are 5/100/unlimited GiB.
 
-**Private/public files:** default private; `url` is `R2_PUBLIC_BASE_URL/<key>` only when bucket is public or when server generates a short presigned GET on demand. No public URL is returned for private-by-default buckets without expiry.
+**File metadata:** `organizationId nullable` (private when null), required `userId`, unique server key, compatibility `url` opaque reference, `contentType`, `size`, `status`, `expiresAt`, `updatedAt`. Migration `0004_real_boomerang.sql` adds `file_status`, lifecycle timestamps, and user/org/status indexes.
 
-**Orphan cleanup:** `files where status='pending' and createdAt < now()-1h` or `expiresAt < now()` are eligible for GC — daily cron or lazy `confirmUpload` reject.
+**Private/public files:** objects are private by default. The existing `url` column stores the opaque key/reference for compatibility, not a permanent public URL. Reads use short-lived provider-signed GETs. Avatar keys use `user/<userId>/avatar/` and `users.image` remains the canonical profile field.
+
+**Provider:** `packages/storage/src/server.ts` exposes the provider interface and AWS S3-compatible R2/S3 adapter; `NotConfiguredStorageProvider` and fake-provider seam cover absent credentials. Provider SDK code is not imported into mobile.
+
+**Orphan cleanup:** `identifyExpiredPendingFiles` and `cleanupExpiredFiles` handle `pending` rows whose `expiresAt` has passed. Scheduled cron/worker execution is deferred.
+
 
 ---
 
@@ -654,7 +669,7 @@ app/(app)/assistant.tsx, organization/[slug].tsx
 - **Server:** TanStack Query over `trpc.*.useQuery/useMutation` — keys `['organizations', …]`, `['members', orgId]`, etc. Stale 5m, retry 2, offline cache handled by `persistQueryClient` optional (see §22).
 - **Deep links:** already via `useDeepLinks` → `expo-linking` schemes per variant (`supastarter` prod, per `EXPO_PUBLIC_APP_SCHEME` else variant).
 
-**No provider SDK ever imported in a screen:** billing is `useBilling().purchase`, storage is `trpc.storage.createPresignedUrl`, notifications is `registerPushToken`, analytics is `analytics.track`.
+**No provider SDK ever imported in a screen:** billing is `useBilling().purchase`, storage is `uploadAvatar()`/`trpc.storage.*` through the storage helper, notifications is `registerPushToken`, analytics is `analytics.track`.
 
 ---
 
