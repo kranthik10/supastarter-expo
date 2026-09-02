@@ -1325,6 +1325,57 @@ export const appRouter = router({
     }),
   }),
 
+  dashboard: router({
+    overview: protectedProcedure
+      .input(z.object({ organizationId: z.string().min(1) }).strict())
+      .query(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        const [access] = await db
+          .select({ organization: organizations, role: organizationMembers.role })
+          .from(organizationMembers)
+          .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
+          .where(and(eq(organizationMembers.organizationId, input.organizationId), eq(organizationMembers.userId, ctx.user!.id)))
+          .limit(1);
+        if (!access) throw new TRPCError({ code: 'FORBIDDEN', message: 'organization_forbidden' });
+
+        const now = new Date();
+        const [subscriptionRows, entitlementRows, teamRows, invitationRows, storageUsage, unreadRows] = await Promise.all([
+          db.select().from(subscriptions).where(eq(subscriptions.organizationId, input.organizationId)).limit(1),
+          listEntitlements(db, input.organizationId),
+          db.select({ count: sql<number>`count(*)` }).from(organizationMembers).where(eq(organizationMembers.organizationId, input.organizationId)),
+          db.select({ count: sql<number>`count(*)` }).from(invitations).where(and(eq(invitations.organizationId, input.organizationId), eq(invitations.status, 'pending'), sql`${invitations.expiresAt} > ${now}`)),
+          getOrganizationStorageUsage(db, input.organizationId, now),
+          db.select({ count: sql<number>`count(*)` }).from(notificationRows).where(and(eq(notificationRows.userId, ctx.user!.id), isNull(notificationRows.readAt))),
+        ]);
+
+        const subscription = subscriptionRows[0] ?? null;
+        const planId = subscription?.planId === 'pro' || subscription?.planId === 'enterprise' ? subscription.planId : 'free';
+        const membersEntitlement = entitlementRows.find((item) => item.feature === 'members.limit');
+        const storageEntitlement = entitlementRows.find((item) => item.feature === 'storage.gb');
+
+        return {
+          organization: { id: access.organization.id, name: access.organization.name, role: access.role },
+          planId,
+          subscription: subscription
+            ? {
+                status: subscription.status,
+                trialEndsAt: subscription.trialEndsAt,
+                graceEndsAt: subscription.graceEndsAt,
+                currentPeriodEnd: subscription.currentPeriodEnd,
+                cancelAtPeriodEnd: subscription.cancelAtPeriodEnd,
+              }
+            : null,
+          entitlements: {
+            members: { limit: membersEntitlement?.limit ?? null, enabled: membersEntitlement?.enabled ?? false },
+            storage: { limitGb: storageEntitlement?.limit ?? null, enabled: storageEntitlement?.enabled ?? false },
+          },
+          team: { memberCount: Number(teamRows[0]?.count ?? 0), pendingInvitationCount: Number(invitationRows[0]?.count ?? 0) },
+          storage: { readyBytes: storageUsage.readyBytes, pendingBytes: storageUsage.pendingBytes },
+          notifications: { unreadCount: Number(unreadRows[0]?.count ?? 0) },
+        };
+      }),
+  }),
+
   billing: router({
     getSubscription: protectedProcedure
       .input(z.object({ organizationId: z.string() }))

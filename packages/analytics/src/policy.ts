@@ -16,6 +16,8 @@ export const analyticsEventNames = [
   'billing_screen_viewed',
   'plan_selected',
   'checkout_requested',
+  'dashboard_viewed',
+  'dashboard_quick_action_selected',
 ] as const;
 
 export type AnalyticsEventName = (typeof analyticsEventNames)[number];
@@ -40,6 +42,8 @@ export type AnalyticsEventProperties = {
   billing_screen_viewed: { organization_id?: string };
   plan_selected: { plan: 'free' | 'pro' | 'enterprise'; organization_id?: string };
   checkout_requested: { plan: 'free' | 'pro' | 'enterprise'; organization_id?: string };
+  dashboard_viewed: { organization_id: string };
+  dashboard_quick_action_selected: { action: 'invite_member' | 'manage_billing' | 'team' | 'notifications' | 'settings' };
 };
 
 export type ScreenName =
@@ -75,6 +79,8 @@ const eventPropertyKeys: Record<AnalyticsEventName, readonly string[]> = {
   billing_screen_viewed: ['organization_id'],
   plan_selected: ['plan', 'organization_id'],
   checkout_requested: ['plan', 'organization_id'],
+  dashboard_viewed: ['organization_id'],
+  dashboard_quick_action_selected: ['action'],
 };
 
 const forbiddenPropertyKeys = new Set([

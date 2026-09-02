@@ -10,6 +10,8 @@ describe('analytics policy', () => {
   it('uses one lower_snake_case event catalog', () => {
     expect(analyticsEventNames).toContain('user_signed_in');
     expect(analyticsEventNames).toContain('organization_created');
+    expect(analyticsEventNames).toContain('dashboard_viewed');
+    expect(analyticsEventNames).toContain('dashboard_quick_action_selected');
     expect(analyticsEventNames.some((event) => event.includes('.'))).toBe(false);
   });
 
@@ -21,6 +23,7 @@ describe('analytics policy', () => {
 
   it('accepts only declared scalar properties', () => {
     expect(sanitizeAnalyticsProperties('user_signed_in', { method: 'password' })).toEqual({ method: 'password' });
+    expect(sanitizeAnalyticsProperties('dashboard_quick_action_selected', { action: 'invite_member' })).toEqual({ action: 'invite_member' });
     expect(sanitizeAnalyticsProperties('user_signed_in', { method: 'password', extra: 'not-declared' })).toBeNull();
   });
 

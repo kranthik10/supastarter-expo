@@ -1,12 +1,15 @@
 # Phase 3 — SaaS Product Layer Architecture
 
-**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5 implemented; remaining Phase 3 milestones are specification only
+**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5 + Phase 3.6 + Phase 3.7 + Phase 3.8 implemented; Phase 3.9 and Phase 3.10 remain deferred
 **Historical baseline:** `5c1ceba` (Phase 2)
 **Phase 3.1 checkpoint:** `c0f54f7`; documentation closure `33daf39`; GitHub Actions `33539998678` PASS
 **Phase 3.2 active baseline:** `f7517ae`; GitHub Actions `33544316656` PASS
 **Phase 3.3 active implementation:** User Settings recorded in `docs/phase-3-milestone-3.3-delivery.md`
 **Phase 3.4 active implementation:** Storage recorded in `docs/phase-3-milestone-3.4-delivery.md`
 **Phase 3.5 active implementation:** Notifications recorded in `docs/phase-3-milestone-3.5-delivery.md`
+**Phase 3.6 active implementation:** Analytics recorded in `docs/phase-3-milestone-3.6-delivery.md`
+**Phase 3.7 active implementation:** Monitoring recorded in `docs/phase-3-milestone-3.7-delivery.md`
+**Phase 3.8 active implementation:** SaaS Dashboard is recorded in `docs/phase-3-milestone-3.8-audit.md` and `docs/phase-3-milestone-3.8-delivery.md`; the Home route uses the protected `dashboard.overview` aggregation with no schema change.
 **Repository:** `kranthik10/supastarter-expo` (public, main)
 **Validation at historical baseline:** `typecheck: PASS` (26), `lint: PASS` (14), `test: PASS` (4 files, 30 tests), `build: PASS` (expo export), CI `33453674804` PASS
 **Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 CI `33544316656` PASS; Phase 3.3 local validation is recorded in `docs/phase-3-milestone-3.3-delivery.md`; Phase 3.4 local validation is recorded in `docs/phase-3-milestone-3.4-delivery.md`; Phase 3.5 local and CI validation is recorded in `docs/phase-3-milestone-3.5-delivery.md` (CI `33566334755` PASS for `f4eaf77`)
@@ -667,7 +670,7 @@ app/(app)/assistant.tsx, organization/[slug].tsx
 
 | Tab / Route | Purpose | Data |
 |-------------|---------|------|
-| `Home` | Org summary + entitlement badge | `organizations.get`, `billing.getEntitlement`, `audit_logs` recent |
+| `Home` | Server-backed org dashboard: plan/status, entitlement limits, team/storage/notification summaries, and quick actions | `dashboard.overview` (protected aggregate reusing billing, organizations, storage, notifications) |
 | `Organization` (`/organization/[slug]`) | Org settings (name, logo via R2) | `organizations.update` (gated `organization.update`) |
 | `Team` (`/(app)/(tabs)/team`) | Member list, invite form, role chips, revoke/remove | `members.list`, `invitations.list/create/revoke`, `members.remove` |
 | `Billing` (`/(app)/(tabs)/billing`) | Plan cards, current entitlement, checkout/portal buttons | `plans` (local), `billing.getEntitlement`, `createCheckoutSession/PortalSession` |
