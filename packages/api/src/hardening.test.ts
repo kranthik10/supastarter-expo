@@ -14,6 +14,10 @@ describe('production security configuration', () => {
     });
   });
 
+  it('requires an explicit Better Auth URL in production', () => {
+    expect(() => getAuthConfig({ BETTER_AUTH_SECRET: 'a'.repeat(32), NODE_ENV: 'production' })).toThrow(/BETTER_AUTH_URL/);
+  });
+
   it('enables the dev auth bypass only with an explicit development flag', () => {
     expect(isDevAuthEnabled({ NODE_ENV: 'development', ENABLE_DEV_AUTH: 'true' })).toBe(true);
     expect(isDevAuthEnabled({ NODE_ENV: 'production', ENABLE_DEV_AUTH: 'true' })).toBe(false);

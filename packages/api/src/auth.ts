@@ -12,9 +12,16 @@ export function getAuthConfig(env: AuthEnvironment = process.env): AuthConfig {
   const secret = env.BETTER_AUTH_SECRET;
   if (!secret) throw new Error('BETTER_AUTH_SECRET is required');
   if (secret.length < 32) throw new Error('BETTER_AUTH_SECRET must be at least 32 characters');
+  const baseURL = env.BETTER_AUTH_URL ?? (env.NODE_ENV === 'production' ? undefined : 'http://localhost:3000');
+  if (!baseURL) throw new Error('BETTER_AUTH_URL is required in production');
+  try {
+    new URL(baseURL);
+  } catch {
+    throw new Error('BETTER_AUTH_URL must be a valid URL');
+  }
   return {
     secret,
-    baseURL: env.BETTER_AUTH_URL ?? 'http://localhost:3000',
+    baseURL,
     trustedOrigins: parseAllowedOrigins(env.CORS_ALLOWED_ORIGINS),
   };
 }
