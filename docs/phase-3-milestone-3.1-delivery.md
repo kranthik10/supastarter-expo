@@ -50,7 +50,7 @@ Billing foundation + subscription lifecycle + org-scoped entitlements + server-e
 - `packages/config/src/env.test.ts`, `packages/api/src/api.test.ts` unchanged
 
 ### Mobile
-- No required UI change for 3.1 — existing `apps/mobile/app/(app)/(tabs)/billing.tsx` remains local `useBilling` cache (UI hint). Server billing is reachable via `trpc.billing.*` for future screen; building it is deferred to 3.2 per spec. `apps/mobile/lib/billing` legacy duplicate left untouched.
+- No required UI change for 3.1 — existing `apps/mobile/app/(app)/(tabs)/billing.tsx` remains a local plan-preview/cache surface and must not be treated as canonical billing state. Server billing is reachable via `trpc.billing.*`; provider-backed checkout/portal and production billing UI remain deferred until real provider integration.
 
 ---
 
@@ -78,8 +78,8 @@ Billing foundation + subscription lifecycle + org-scoped entitlements + server-e
 ## DEFERRED
 
 - Real `StripeProvider`/`RevenueCatProvider` SDK calls, `createCheckout` sheet, App Store/Google Play purchase UI (3.1 ships `BillingProvider` interface + `StubProvider` only; `verifyWebhook` stub returns false, no secret handling)
-- Webhook HMAC + `audit_logs.idempotency_key` (3.9 hardening)
-- Mobile billing screen server integration (3.2 will replace local `useBilling` with `trpc.billing.*` and build manage portal)
+- Webhook HMAC and provider-event idempotency remain deferred release prerequisites; the current `/webhooks/*` route returns `501` and does not acknowledge events.
+- Mobile billing screen server integration and provider-backed checkout/portal remain deferred until real Stripe/RevenueCat configuration is implemented.
 - `invitations`/`files`/`push_tokens`/`notifications`/`audit_logs` deltas from Phase 3 ERD (3.2 storage/notifications 3.4/3.5)
 - EAS native build, Maestro execution (still deferred per Phase 2 status)
 

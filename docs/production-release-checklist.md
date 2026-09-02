@@ -5,6 +5,7 @@ This checklist is intentionally separate from milestone code completion. A green
 ## CODE COMPLETE
 
 - [x] Better Auth secret is required and no deterministic production fallback remains.
+- [x] Production requires an explicit valid `BETTER_AUTH_URL`; development retains the localhost default.
 - [x] Development authentication bypass requires `NODE_ENV=development` and `ENABLE_DEV_AUTH=true`; production rejects it.
 - [x] Installed Better Auth `sessionToken` response is persisted only through native SecureStore; web uses Better Auth cookies.
 - [x] Persisted sessions are server-revalidated before restoration; invalid/revoked sessions clear local state.
@@ -17,6 +18,7 @@ This checklist is intentionally separate from milestone code completion. A green
 - [x] Hono CORS uses explicit `CORS_ALLOWED_ORIGINS`; wildcard origin is not used.
 - [x] Baseline API security headers are applied; HSTS is production-only.
 - [x] Unimplemented webhook routes return non-success `501` instead of acknowledging and dropping events.
+- [x] Production-only Better Auth URL enforcement is covered by the Phase 3.10 final-audit regression test.
 - [x] Public `EXPO_PUBLIC_AI_API_KEY` configuration is removed; real assistant providers must be server-side.
 - [ ] Real billing webhook ingestion, signature verification, reconciliation, and replay idempotency.
 - [ ] Real object-storage provider verification and operational retry/cleanup scheduling.

@@ -1,6 +1,6 @@
 # Phase 3 — SaaS Product Layer Architecture
 
-**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5 + Phase 3.6 + Phase 3.7 + Phase 3.8 + Phase 3.9 implemented; Phase 3.10 remains deferred
+**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5 + Phase 3.6 + Phase 3.7 + Phase 3.8 + Phase 3.9 + Phase 3.10 implemented; Phase 3 is closed with release warnings
 **Historical baseline:** `5c1ceba` (Phase 2)
 **Phase 3.1 checkpoint:** `c0f54f7`; documentation closure `33daf39`; GitHub Actions `33539998678` PASS
 **Phase 3.2 active baseline:** `f7517ae`; GitHub Actions `33544316656` PASS
@@ -11,6 +11,7 @@
 **Phase 3.7 active implementation:** Monitoring recorded in `docs/phase-3-milestone-3.7-delivery.md`
 **Phase 3.8 active implementation:** SaaS Dashboard is recorded in `docs/phase-3-milestone-3.8-audit.md` and `docs/phase-3-milestone-3.8-delivery.md`; the Home route uses the protected `dashboard.overview` aggregation with no schema change.
 **Phase 3.9 active implementation:** Production hardening is recorded in `docs/phase-3-milestone-3.9-audit.md`, `docs/phase-3-milestone-3.9-delivery.md`, and `docs/production-release-checklist.md`; external providers, distributed limits, native release, and scheduled operations remain explicit release gates.
+**Phase 3.10 closure:** The end-to-end final audit and closure are recorded in `docs/phase-3-milestone-3.10-final-audit.md` and `docs/phase-3-closure.md`; no Phase 4 work is included.
 **Repository:** `kranthik10/supastarter-expo` (public, main)
 **Validation at historical baseline:** `typecheck: PASS` (26), `lint: PASS` (14), `test: PASS` (4 files, 30 tests), `build: PASS` (expo export), CI `33453674804` PASS
 **Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 CI `33544316656` PASS; Phase 3.3 local validation is recorded in `docs/phase-3-milestone-3.3-delivery.md`; Phase 3.4 local validation is recorded in `docs/phase-3-milestone-3.4-delivery.md`; Phase 3.5 local and CI validation is recorded in `docs/phase-3-milestone-3.5-delivery.md` (CI `33566334755` PASS for `f4eaf77`); Phase 3.6 and 3.7 validation are recorded in their delivery docs; Phase 3.8 local validation and CI run `33645460517` PASS are recorded in `docs/phase-3-milestone-3.8-delivery.md`.
@@ -40,7 +41,7 @@ Phase 3 delivers **primitives, not a demo app**: typed APIs, server-enforced rul
 | Storage (presigned upload + metadata + private access) | IMPLEMENTED (fake/not-configured provider; real R2 deferred) | `packages/storage`, `packages/api` |
 | Notifications (in-app, token registration, Expo provider seam) | IMPLEMENTED (fake/not-configured provider; real device delivery deferred) | `packages/notifications`, `packages/api`, mobile notification center |
 | Analytics (typed catalog, consent, PostHog seams) | IMPLEMENTED (no-op/fake by default; external ingestion depends on configuration) | `packages/analytics`, app root lifecycle, API server events |
-| CI (GitHub Actions, Node 24, pnpm 11.24) | COMPLETE | `.github/workflows/ci.yml`, runs `33453674804` PASS |
+| CI (GitHub Actions, Node 24, pnpm 11.24) | COMPLETE | `.github/workflows/ci.yml`, final Phase 3.9 head run `33676211194` PASS |
 | EAS (`eas.json` 3 profiles) + Maestro (5 flows, dev `appId` fixed) | DEFERRED | `apps/mobile/eas.json`, `.maestro/*`, `docs/phase-2-milestone-3-eas-maestro-ci.md` |
 
 **What is intentionally deferred in Phase 2 and stays deferred until EAS creds exist:** cloud `eas build --profile development`, simulator install, Maestro execution on device. They must not be fabricated.
@@ -81,7 +82,7 @@ Phase 3 delivers **primitives, not a demo app**: typed APIs, server-enforced rul
 - A new auth system — Better Auth remains; `AuthClient` seam unchanged.
 - A new monorepo layout — `apps/mobile → packages/*` stays; `packages/ui` stays leaf; `packages/api` stays server boundary.
 - A schema change without a Drizzle migration and `db:generate` review.
-- Any provider secret reaching the mobile bundle (verified by `packages/config` public/private split + CI `db:generate --dry-run` + bundle leak audit).
+- Any provider secret reaching the mobile bundle (verified by `packages/config` public/private split + CI `db:generate` drift gate + bundle leak audit).
 
 ---
 
@@ -100,9 +101,9 @@ Phase 3 delivers **primitives, not a demo app**: typed APIs, server-enforced rul
 │           ↕ REST only for webhooks/health (Hono)                          │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ API (Hono + tRPC v11)  packages/api                                      │
-│  /trpc/*  (protectedProcedure + enforce(permission) middleware)           │
-│  /api/rest/webhooks/{stripe,revenuecat,posthog} (HMAC, idempotency)      │
-│  /api/rest/health, /api/auth/* (Better Auth mount)                       │
+│  /api/trpc/*  (protectedProcedure + server authorization)                │
+│  /webhooks/* (placeholder; returns 501 until provider handlers exist)    │
+│  /health, /api/auth/* (health + Better Auth mount)                        │
 │     │→ packages/organizations, permissions, billing, storage, notifications│
 ├─────────────────────────────────────────────────────────────────────────┤
 │ Auth  packages/auth  — Better Auth, SecureStore, AuthClient seam          │
@@ -198,8 +199,8 @@ The 16 tables from `packages/database/src/schema.ts` at `5c1ceba` remain exactly
 | Billing | `subscriptions.provider_status text nullable` | `addColumn` | Raw provider status for audit (e.g. `stripe.incomplete`) |
 | Billing | `entitlements` (new) | `createTable` | Per-org feature gates (see §13) |
 | Invites | `invitations.status enum('pending','accepted','revoked','expired')` + `responded_at` | `addColumn`/`pgEnum` | Lifecycle beyond token expiry |
-| Invites | `invitations.code text unique` (short 6-char join code, nullable) | `addColumn + unique` | Mobile-friendly alternative to token URL |
-| Audit | `audit_logs.idempotency_key text unique nullable` | `addColumn` | Webhook idempotency |
+| Invites | `invitations.code text unique` (short 6-char join code, nullable) | **REJECTED** | Secure token is the only redemption credential; no second code path. |
+| Audit | `audit_logs.idempotency_key text unique nullable` | **DEFERRED** | Required with real signed provider webhooks; no idempotency column or handler is shipped in Phase 3. |
 | Storage | `files.status enum('pending','ready','deleted') default 'pending'` | `addColumn` | Implemented in migration `0004_real_boomerang.sql`; presign→HEAD-confirm→delete lifecycle |
 | Storage | `files.expires_at timestamptz nullable` + `files.updated_at timestamptz not null default now()` | `addColumn` | Pending reservation/orphan cleanup and lifecycle timestamps |
 | Storage | `files.user_id`, `files.organization_id`, `files.status` indexes | `createIndex` | File metadata/quota hot paths |
@@ -234,7 +235,7 @@ CREATE UNIQUE INDEX "entitlements_org_feature_uidx" ON "entitlements" ("organiza
 
 - `unique(entitlements.organizationId, entitlements.feature)`
 - `check (subscriptions.status in ('active','past_due','canceled','trialing','incomplete') and not (status='trialing' and trial_ends_at is null))` — application-level check preferred to avoid PG enum churn
-- `invitations(token unique, code unique where not null)` — one active invite per `(organization_id, email)` via partial index
+- `invitations(token unique)` — one secure digest per invitation; pending email uniqueness is enforced by the partial unique index
 
 ### 8.3 Seed updates
 
@@ -244,7 +245,7 @@ CREATE UNIQUE INDEX "entitlements_org_feature_uidx" ON "entitlements" ("organiza
 
 ## 9. API architecture
 
-**Stack unchanged:** Hono mounts `@better-auth` at `/api/auth/*`; tRPC at `/trpc/*`; REST at `/api/rest/*` exclusively for webhooks + `health`.
+**Stack unchanged:** Hono mounts `@better-auth` at `/api/auth/*`; tRPC at `/api/trpc/*`; the current REST surface is `GET /health` plus a `/webhooks/*` placeholder that returns `501 webhook_not_configured`. Signed provider webhooks remain deferred.
 
 **Context (unchanged contract):**
 
@@ -257,7 +258,7 @@ type ApiContext = {
 };
 ```
 
-**Router split (existing + Phase 3 additive):**
+**Current implementation note:** The `procedures/` and `rest/webhooks/*` tree below is the approved future decomposition/contract, not a claim that those modules or provider handlers exist in this repository. The shipped router is `packages/api/src/router.ts`; its exact procedure inventory and protection classification are recorded in `docs/phase-3-milestone-3.10-final-audit.md`.
 
 ```
 packages/api/src/
@@ -681,11 +682,11 @@ app/(app)/assistant.tsx, organization/[slug].tsx
 
 **State mapping:**
 
-- **Device/UI:** Zustand — `useAuth` (hydrate, SecureStore), `useOrgs` (activeOrgId, hydrate), `useBilling` (plan cache), `useSettings` (locale, isDark). No Zustand for server lists — those are TanStack Query.
+- **Device/UI:** Zustand — `useAuth` (hydrate, SecureStore), `useOrgs` (activeOrgId plus a compatibility mirror of fetched organizations/members/invitations), `useBilling` (plan-preview cache), and `useSettings` (locale, isDark). Server authorization and canonical reads remain in the API; TanStack Query owns feature-specific server queries.
 - **Server:** TanStack Query over `trpc.*.useQuery/useMutation` — keys `['organizations', …]`, `['members', orgId]`, etc. Stale 5m, retry 2, offline cache handled by `persistQueryClient` optional (see §22).
 - **Deep links:** already via `useDeepLinks` → `expo-linking` schemes per variant (`supastarter` prod, per `EXPO_PUBLIC_APP_SCHEME` else variant).
 
-**No provider SDK ever imported in a screen:** billing is `useBilling().purchase`, storage is `uploadAvatar()`/`trpc.storage.*` through the storage helper, notifications is `registerPushToken`, analytics is `analytics.track`.
+**No provider SDK ever imported in a screen:** the current billing screen is a local plan preview; future provider-backed billing must use the server/provider seam. Storage is `uploadAvatar()`/`trpc.storage.*` through the storage helper, notifications is `registerPushToken`, and analytics is `analytics.track`.
 
 ---
 
@@ -696,12 +697,12 @@ app/(app)/assistant.tsx, organization/[slug].tsx
 | **Auth** | Better Auth session as SoR, `protectedProcedure` checks `ctx.user`, gate in `(app)/_layout` | `settings.deleteAccount` deletes sessions before the Better Auth user row and blocks sole-owner deletion; `listSessions/revokeSession` wrappers are user-scoped; session expiry → `(app)` gate → `/sign-in` |
 | **Authz** | `assertCan(role, perm)` per org, role from DB not client | User settings derive `ctx.user.id` and need no organization permission; org/team procedures retain membership + `assertCan` |
 | **Input validation** | `zod` on every tRPC input; `users(email unique)` | All Phase 3 inputs `zod`-validated; file `key`/`url` never client-controlled; avatar via `confirmUpload` HEAD check |
-| **Rate limiting** | None yet | In-memory leaky bucket (Node) per `(userId, procedure)` (e.g. `invitations.create` 5/min, `storage.createPresignedUrl` 20/min) — Vercel/Cloudflare layer optional via ADR-012 |
-| **Webhook verification** | No webhook yet | `stripe.webhooks.constructEvent` with `STRIPE_WEBHOOK_SECRET`; RevenueCat HMAC compare (constant-time); fail-closed `401` before write; `idempotency_key` dedup |
-| **Idempotency** | No | `audit_logs.idempotency_key unique` for every webhook; tRPC mutations accept optional `idempotencyKey` header → dedup in transaction |
-| **DB constraints** | Unique indexes already | Partial unique `(orgId,email) where status='pending'` for invites; `check` on status+`trial_ends_at`; `entitlements.unique(org,feature)` |
-| **Transactions** | Single inserts | Every multi-write (`accept`, `transferOwnership`, webhook upsert) in a single Drizzle transaction + `audit_logs` |
-| **Secrets** | Public/private split in `packages/config` | No new secret reaches bundle; `R2_*`, `STRIPE_SECRET_KEY`, `REVENUECAT_SECRET_KEY`, webhook secrets server-only; CI `db:generate --dry-run` guards migration drift |
+| **Rate limiting** | None yet | In-memory leaky bucket (Node) per `(userId, procedure)` for invitation abuse-sensitive paths; distributed enforcement remains a release prerequisite |
+| **Webhook verification** | No provider handler is enabled | **DEFERRED** — current `/webhooks/*` returns `501`; signed verification and reconciliation are required before activation |
+| **Idempotency** | No | **DEFERRED** — no `audit_logs.idempotency_key` column or provider-event replay store is shipped |
+| **DB constraints** | Unique indexes already | Partial unique pending-invitation index, `entitlements.unique(org,feature)`, and `subscriptions.organization_id` uniqueness; status/trial checks remain application-level |
+| **Transactions** | Single inserts | Current multi-write team/invitation/storage/account flows use Drizzle transactions; provider webhook upsert is not implemented |
+| **Secrets** | Public/private split in `packages/config` | No new secret reaches bundle; `R2_*`, `STRIPE_SECRET_KEY`, `REVENUECAT_SECRET_KEY`, webhook secrets server-only; CI `db:generate` drift gate guards migration drift |
 | **PII** | `emailVerified` pattern | Sentry never tags raw email/token; audit logs keep token hash; analytics sends only sanitized internal IDs and safe metadata |
 
 **Hardest invariant:** the mobile `userId`/`role`/`organizationId` is *never* trusted. Server re-derives membership per request.
@@ -734,7 +735,7 @@ type ApiErrorCode =
 
 **Server logging:**
 
-- Every `TRPCError` is logged with `{ code, path, userIdHash, orgId, durationMs }` — never raw email/token. `INTERNAL` includes `captureError(err, { userId, orgId, route })` when monitoring initialized.
+- Hono’s logger remains a narrow method/path/status logger. Monitoring receives only sanitized method, route/procedure, status/code, and bounded request ID at the `onError` boundary; it does not receive raw request bodies, headers, cookies, query values, tokens, or provider payloads.
 
 ---
 
@@ -769,38 +770,34 @@ Full queue (`@tanstack/query-persist-client` + `mutationCache` + background sync
 | Contract | `pnpm typecheck` + `pnpm lint` | Types between `packages/types` ↔ `packages/api` ↔ `apps/mobile` | CI + local gate |
 | Bundle leak | `pnpm build` + grep | `0` hits for `DATABASE_URL|BETTER_AUTH_SECRET|STRIPE_SECRET|whsec_|sk_live|R2_SECRET` in `apps/mobile/dist`, only `EXPO_PUBLIC_*` present | CI post-build check |
 
-**Execution:** `turbo run test` parallel. CI runs `pnpm test` after `pnpm install --frozen-lockfile` on Node 24 (proven at `33515816782`). Maestro remains deferred — `docs/phase-2-milestone-3-eas-maestro-ci.md` §8 stays accurate.
+**Execution:** Root CI runs `pnpm test` after the frozen install. The final audit uses the same validation commands locally; Maestro remains deferred.
 
 ---
 
 ## 24. CI strategy
 
-**Workflow unchanged from Phase 2 remediation** (`.github/workflows/ci.yml` at `5c1ceba` after commits `854b664`/`4276710`):
+**Current workflow:** `.github/workflows/ci.yml` runs lint, typecheck, tests, Expo build, and a fail-on-drift database generation check.
 
 ```yaml
-on: { push: { branches: [main] }, pull_request: { branches: [main] } }
-concurrency: ci-${{ github.ref }}, cancel-in-progress: true
-jobs:
-  validate:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4           # inherits pnpm@11.24.0 from packageManager
-      - uses: actions/setup-node@v4
-        with: { node-version: 24, cache: pnpm }
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm lint          # 14 tasks — must pass
-      - run: pnpm typecheck     # 26 tasks — must pass
-      - run: pnpm test          # expect ≥30 (grows with Phase 3 tests)
-      - run: pnpm build         # expo export + all packages
-      - run: pnpm --filter @repo/database db:generate --dry-run  # continue-on-error (drift detector)
+- run: pnpm install --frozen-lockfile
+- run: pnpm lint
+- run: pnpm typecheck
+- run: pnpm test
+- run: pnpm build
+- name: DB generate check
+  run: |
+    pnpm --filter @repo/database db:generate
+    git diff --exit-code -- packages/database/drizzle
+    test -z "$(git ls-files --others --exclude-standard -- packages/database/drizzle)"
 ```
 
-**Branching:** `main` is protected; every Phase 3 milestone lands as a single squashed commit after the above checks pass locally and on the branch run.
+The migration check has no `continue-on-error` or ignored exit status. The final pre-audit Phase 3.9 head was verified by GitHub Actions run `33676211194`.
 
-**EAS:** no EAS job in CI (credentials are not in GH Actions). `eas build --profile development` stays a developer-local step (`eas whoami` shows `Not logged in` expected at `5c1ceba`; creds are `DEFERRED`).
+**Branching:** `main` is protected; milestone commits are validated locally and on the branch run.
 
-**Caching:** `turbo` remote cache not yet wired; `pnpm` cache via `actions/setup-node` is already effective.
+**EAS:** no EAS job in CI (credentials are not in GH Actions). EAS builds remain a release prerequisite and are not run in Phase 3.10.
+
+**Caching:** `turbo` remote cache is not wired; `pnpm` cache via `actions/setup-node` is used.
 
 ---
 
