@@ -601,10 +601,11 @@ V1 product events use one convention, `lower_snake_case`, including `user_signed
 
 ### 9.6 Error monitoring (§20)
 
-- `@sentry/react-native` in `apps/mobile` (init in `app/_layout.tsx` before hydration), `@sentry/node` on Hono server.
-- Centralized: one `Sentry.init` in app, one on API. Breadcrumbs auto-capture, `Sentry.captureException` only in `api/client.ts` interceptor and tRPC error formatter.
-- Releases tracked via `SENTRY_RELEASE` from `eas.json` `env` + sourcemaps upload in `eas build` hook.
-- No scattered `try/catch + console.error` per screen.
+The implemented `@repo/monitoring` package provides a client-safe facade/policy, separate `client` and `server` exports, no-op/fake providers, and a fetch-based Sentry Store API provider. The mobile client may use public `EXPO_PUBLIC_SENTRY_DSN`; the API reads private `SENTRY_DSN_SERVER`. Missing DSNs select no-op providers.
+
+Monitoring recursively redacts credentials, bearer tokens, invitation/reset tokens, signed storage URLs, request/response bodies, payment data, and raw identity fields before capture. The app root owns a single client instance, a render-error boundary, guarded unhandled-error handlers, sanitized route context, and internal user/organization context. Hono `onError` is the primary uncaught server capture boundary and receives only safe method/path/procedure/status/request metadata.
+
+Expected validation/auth/RBAC/not-found/conflict/precondition/rate-limit/not-configured outcomes are filtered; unexpected database/provider/invariant and uncaught client/server failures are captured. Provider failures never affect product operations. Native crash capture, performance tracing, session replay, source-map upload, and real Sentry ingestion remain deferred until the required native/CI configuration exists.
 
 ---
 

@@ -110,7 +110,7 @@ Phase 3 delivers **primitives, not a demo app**: typed APIs, server-enforced rul
 │ Storage   R2 / S3 presigned PUT    (packages/storage)                     │
 │ Push      Expo Push → APNs/FCM     (packages/notifications)               │
 │ Analytics PostHog abstraction      (packages/analytics)                     │
-│ Errors    Sentry RN+Node           (packages/monitoring — new)             │
+│ Errors    Sentry monitoring abstraction (packages/monitoring)             │
 │ Billing   RevenueCat (IAP) + Stripe (web/seats) behind abstraction          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
@@ -624,41 +624,31 @@ Protected procedures are `notifications.list` (bounded cursor pagination, max 10
 
 ## 18. Monitoring architecture
 
-**New package `packages/monitoring`** (leaf, mirrors `analytics` seam) — RN (`@sentry/react-native`) + Node (`@sentry/node` on API).
+**Status:** Implemented in Milestone 3.7. Monitoring is separate from Phase 3.6 product analytics: analytics records safe product behavior, while monitoring captures unexpected failures and bounded diagnostics.
 
-```ts
-// packages/monitoring/src/index.ts (spec)
-export function initMonitoring(env: { dsn?: string; variant: string; version: string; }): void;
-export function captureError(err: unknown, ctx?: { userId?: string; orgId?: string; route?: string }): void;
-export function setUserContext(userId: string | null): void;
-export function setOrgContext(orgId: string | null): void;
-export const ErrorBoundary: React.FC<{ fallback?: React.ReactNode }>;
-```
+**Package boundary:**
 
-**Error boundaries:**
+- `@repo/monitoring` — client-safe monitoring interface, policy, no-op/fake provider, and fetch-based Sentry provider.
+- `@repo/monitoring/policy` — recursive redaction, error classification, route sanitization, and server-request allowlist.
+- `@repo/monitoring/client` — React error boundary, client factory, and guarded browser/JS-runtime unhandled-error handlers.
+- `@repo/monitoring/server` — server provider/factory and expected-error filtering for Hono/tRPC boundaries.
 
-- Root `apps/mobile/app/_layout.tsx` wraps with `ErrorBoundary` (Sentry). Fallback shows "Something went wrong — retry" without leaking stack to user in production; dev shows stack.
-- API `packages/api` wraps Hono error handler — `TRPCError` codes map to Sentry `level: warning` vs `error`; unexpected exceptions are `captureError` with `level: error`.
+No React Native or Node SDK is imported into the shared root. Mobile imports only the client path; API imports only the server path. Missing `EXPO_PUBLIC_SENTRY_DSN` or `SENTRY_DSN_SERVER` selects a no-op provider.
 
-**API errors vs auth failures:**
+**Provider and transport:** The Sentry provider uses the Sentry Store API through an injected/fetch transport. It attaches bounded release/environment/platform metadata, sanitized exception/message data, and safe user/context state. The client DSN is intentionally public when configured; `SENTRY_AUTH_TOKEN` and release-upload credentials remain server/CI-only.
 
-- `UNAUTHORIZED`/`FORBIDDEN` are not Sentry errors — they are logged as `info` with `action` + `userId` hash (no PII) to avoid alert fatigue.
-- `INTERNAL_SERVER_ERROR` / provider `5xx` are captured with `orgId`/`route` breadcrumbs.
+**Expected vs unexpected errors:** Validation, authentication, authorization, not-found, conflict, precondition/quota, rate-limit, method, and known not-configured outcomes are filtered. Unexpected uncaught exceptions, database/provider/invariant failures, render errors, and unhandled client runtime/promise failures are captured. Hono `onError` is the primary uncaught server boundary and captures once.
 
-**Organization + user context:** `setUserContext(user.id)` after `hydrate()`; `setOrgContext(activeOrgId)` after org hydration. Cleared on `signOut`. No email/raw PII in Sentry tags; use opaque IDs.
+**Server request context:** Hono captures only method, sanitized route, status, optional procedure/code, and bounded `x-request-id`. It never passes authorization headers, cookies, query values, request bodies, form bodies, or raw input payloads.
 
-**Release / env separation:**
+**Error boundary and handlers:** The existing root layout wraps the navigation/query tree in `MonitoringErrorBoundary` and shows a simple retry fallback without stack traces. A single client monitoring instance installs guarded `error`/`unhandledrejection` listeners and React Native `ErrorUtils` handling when available. Native crash capture remains unverified without an EAS/native build.
 
-- `release = ${EXPO_PUBLIC_APP_SLUG}@${version}` (from `app.config.ts`), `environment = EXPO_PUBLIC_APP_VARIANT` (`development`/`preview`/`production`), `dsn = EXPO_PUBLIC_SENTRY_DSN`.
-- Source maps via `sentry-expo-plugin` + EAS `postPublish` in `eas.json` (already present path; Phase 3 only wires `initMonitoring`).
-- Dev variant never sends to prod project; dummy DSN (`""`) is no-op.
+**Identity and organization context:** User context is the Better Auth internal user ID only; email/name/phone/address are never set. Active organization context uses opaque `organization_id` and replaces the prior organization on switch. Logout/user changes clear user, organization, and route context. Mobile routes reuse the Phase 3.6 logical sanitizer, so `/invite/<token>` becomes `invite` and query strings are removed.
 
-**PII considerations:**
+**Redaction:** Monitoring recursively redacts normalized forbidden keys including password, token variants, session, authorization, cookie, secrets/API keys, database URLs, signed URLs, invitation/reset tokens, push tokens, request/response bodies, payment data, and raw identity fields. Error strings/stacks also redact bearer tokens, signed query values, JWT-like values, and tokenized auth paths.
 
-- No `token`, `password`, `email`, or `pushToken` in Sentry breadcrumbs/tags.
-- `audit_logs` and server logs may contain email for compliance but are not Sentry contexts.
+**Deferred:** Performance tracing, session replay, source-map upload, native crash capture, and real Sentry ingestion are deferred. Expo export proves JavaScript bundle compatibility only.
 
----
 
 ## 19. Mobile architecture
 
@@ -899,7 +889,7 @@ Phase 3 is Done when **all** of the following are true on `main` at a single che
 | ADR-012 | Invitations lifecycle + ownership transfer | Proposed (Phase 3) | 2026-09-01 |
 | ADR-013 | Storage hardening (scoped presign + confirm) | Proposed (Phase 3) | 2026-09-01 |
 | ADR-014 | Analytics taxonomy + consent + provider boundaries | Accepted and implemented (Phase 3.6) | 2026-09-02 |
-| ADR-015 | Monitoring boundaries + PII guardrails | Proposed (Phase 3) | 2026-09-01 |
+| ADR-015 | Monitoring boundaries + PII guardrails | Accepted and implemented (Phase 3.7) | 2026-09-02 |
 | ADR-016 | Production hardening (rate limit + idempotency + webhook HMAC) | Proposed (Phase 3) | 2026-09-01 |
 
 *ADR-001–010 are existing (unchanged). ADR-011–016 are new Phase 3 decisions — stubs created in `docs/adr/011-*.md` … `016-*.md` with context/decision/consequences; full text is normative once approved.*
@@ -929,7 +919,7 @@ No `user_subscriptions` table is needed in V1; if a B2C-only fork is desired, it
 | `packages/storage/*` | Presign + confirm (scoped, validated) | No secret in bundle |
 | `packages/notifications/*` | Register + prefs + badge | Device lifecycle |
 | `packages/analytics/*` | Taxonomy doc, no new API | Avoid scatter |
-| `packages/monitoring/*` | **New package** | Sentry seam (RN + Node) |
+| `packages/monitoring/*` | **New package** | Sentry client/server seam with explicit redaction and no-op fallback |
 | `packages/permissions/*` | Additive perms only if justified | Preserve matrix |
 | `apps/mobile/*` | Thin screens per §19 | Consumers of packages |
 | `packages/auth`, `packages/types`, `packages/config`, `packages/ui` | No structural change (types grow additively) | Preserve seams |

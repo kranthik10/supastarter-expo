@@ -16,6 +16,7 @@
   "dependencies": {
     "@repo/billing": "workspace:*",
     "@repo/config": "workspace:*",
+    "@repo/monitoring": "workspace:*",
     "@repo/analytics": "workspace:*",
     "expo-secure-store": "~57.0.1",
     "zod": "^3.23.8",

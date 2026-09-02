@@ -6,6 +6,7 @@
     "@expo/ui": "~57.0.12",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@repo/analytics": "workspace:*",
+    "@repo/monitoring": "workspace:*",
     "@repo/api": "workspace:*",
     "@repo/auth": "workspace:*",
     "@repo/billing": "workspace:*",

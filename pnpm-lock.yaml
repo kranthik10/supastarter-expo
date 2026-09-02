@@ -96,6 +96,9 @@ importers:
       '@repo/database':
         specifier: workspace:*
         version: link:../../packages/database
+      '@repo/monitoring':
+        specifier: workspace:*
+        version: link:../../packages/monitoring
       '@repo/notifications':
         specifier: workspace:*
         version: link:../../packages/notifications
@@ -249,6 +252,9 @@ importers:
       '@repo/database':
         specifier: workspace:*
         version: link:../database
+      '@repo/monitoring':
+        specifier: workspace:*
+        version: link:../monitoring
       '@repo/notifications':
         specifier: workspace:*
         version: link:../notifications
@@ -352,6 +358,15 @@ importers:
       drizzle-kit:
         specifier: ^0.31.4
         version: 0.31.10
+
+  packages/monitoring:
+    dependencies:
+      '@repo/analytics':
+        specifier: workspace:*
+        version: link:../analytics
+      react:
+        specifier: '*'
+        version: 19.2.3
 
   packages/notifications:
     dependencies:

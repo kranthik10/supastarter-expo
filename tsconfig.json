@@ -40,6 +40,9 @@
       "path": "./packages/analytics"
     },
     {
+      "path": "./packages/monitoring"
+    },
+    {
       "path": "./packages/ai"
     }
   ]

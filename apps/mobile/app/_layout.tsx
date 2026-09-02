@@ -1,7 +1,7 @@
 import '../lib/i18n';
 import React, { useEffect, useRef } from 'react';
 import { Stack, router, usePathname } from 'expo-router';
-import { Appearance } from 'react-native';
+import { Appearance, Platform, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useSettings } from '@/lib/settings-store';
@@ -12,12 +12,21 @@ import { changeLanguage } from '@/lib/i18n';
 import { useDeepLinks, storePendingLink } from '@/lib/linking';
 import { addNotificationResponseListener, getLastNotificationData, type SafeNotificationData } from '@repo/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { createClientMonitoring, installClientErrorHandlers, MonitoringErrorBoundary } from '@repo/monitoring/client';
+import { Text, Button } from '@repo/ui';
 import { analytics, configureAnalytics, screenNameForPath, setAnalyticsEnabled } from '@repo/analytics';
 import { config } from '@repo/config';
+import Constants from 'expo-constants';
 import { trpc } from '@repo/api';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 const queryClient = new QueryClient();
+const clientMonitoring = createClientMonitoring({
+  dsn: config.sentryDsn,
+  release: `${config.appSlug}@${Constants.expoConfig?.version ?? '1.0.0'}`,
+  environment: config.appVariant,
+  platform: Platform.OS,
+});
 configureAnalytics({ apiKey: config.posthogKey, host: config.posthogHost });
 
 export default function RootLayout() {
@@ -37,6 +46,26 @@ export default function RootLayout() {
   const hydrateSettings = useSettings((s) => s.hydrate);
 
   useDeepLinks();
+
+  useEffect(() => installClientErrorHandlers(clientMonitoring), []);
+
+  useEffect(() => {
+    if (!hydrated) return;
+    clientMonitoring.setUserContext(user?.id ?? null);
+    if (!user) clientMonitoring.setOrganizationContext(null);
+  }, [hydrated, user?.id]);
+
+  useEffect(() => {
+    if (!user || !activeOrgId) {
+      clientMonitoring.setOrganizationContext(null);
+      return;
+    }
+    clientMonitoring.setOrganizationContext({ organizationId: activeOrgId });
+  }, [activeOrgId, user?.id]);
+
+  useEffect(() => {
+    clientMonitoring.setRoute(pathname);
+  }, [pathname]);
 
   useEffect(() => {
     if (!hydrated) return;
@@ -126,7 +155,8 @@ export default function RootLayout() {
   if (!hydrated || !settingsHydrated) return null;
 
   return (
-    <QueryClientProvider client={queryClient}>
+    <MonitoringErrorBoundary monitoring={clientMonitoring} fallback={(reset) => <MonitoringFallback onRetry={reset} />}>
+      <QueryClientProvider client={queryClient}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(marketing)" />
@@ -135,7 +165,20 @@ export default function RootLayout() {
         <Stack.Screen name="(onboarding)" />
         <Stack.Screen name="(app)" />
       </Stack>
-    </QueryClientProvider>
+      </QueryClientProvider>
+    </MonitoringErrorBoundary>
   );
 }
 
+function MonitoringFallback({ onRetry }: { onRetry: () => void }) {
+  return (
+    <View style={styles.fallback}>
+      <Text variant="h2">Something went wrong</Text>
+      <Button label="Try again" onPress={onRetry} />
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  fallback: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24 },
+});
