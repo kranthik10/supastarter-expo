@@ -154,7 +154,7 @@ export const subscriptions = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('subs_org_idx').on(t.organizationId)]
+  (t) => [uniqueIndex('subs_org_uidx').on(t.organizationId), index('subs_org_idx').on(t.organizationId)]
 );
 
 export const invitations = pgTable(

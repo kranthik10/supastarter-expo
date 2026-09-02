@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "subs_org_uidx" ON "subscriptions" USING btree ("organization_id");

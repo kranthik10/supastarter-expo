@@ -3,6 +3,8 @@ import {
   normalizeEmail,
   generateInvitationToken,
   hashInvitationToken,
+  persistedInvitationToken,
+  publicInvitation,
   invitationRequestState,
   canAcceptMember,
   canRemoveMember,
@@ -27,6 +29,23 @@ describe('team invitation security primitives', () => {
     expect(hashInvitationToken(first)).not.toBe(first);
   });
 
+  it('uses a digest for persistence and never projects the bearer token', () => {
+    const token = 'a'.repeat(64);
+    const projected = publicInvitation({
+      id: 'inv-1',
+      organizationId: 'org-1',
+      email: 'person@example.com',
+      role: 'member',
+      token: persistedInvitationToken(token),
+      status: 'pending',
+      expiresAt: new Date('2026-09-10T00:00:00Z'),
+      respondedAt: null,
+      createdAt: new Date('2026-09-01T00:00:00Z'),
+    });
+    expect(persistedInvitationToken(token)).toBe(hashInvitationToken(token));
+    expect(projected).not.toHaveProperty('token');
+    expect(projected.email).toBe('person@example.com');
+  });
   it('rejects non-pending, expired, and validly accepts pending invitations', () => {
     const now = new Date('2026-09-01T12:00:00Z');
     expect(invitationRequestState('accepted', new Date('2026-09-10T00:00:00Z'), now)).toBe('not_pending');
@@ -90,7 +109,7 @@ describe('team API contract and billing security regression', () => {
     expect(procedures).toHaveProperty('organizations.transferOwnership');
   });
 
-  it('does not allow a billing owner to forge a paid plan through the client procedure', async () => {
+  it('does not allow a billing owner to mutate even the free subscription through the client procedure', async () => {
     let writes = 0;
     const fakeDb = {
       select: () => ({
@@ -102,6 +121,10 @@ describe('team API contract and billing security regression', () => {
         writes += 1;
         throw new Error('write should not happen');
       },
+      update: () => {
+        writes += 1;
+        throw new Error('write should not happen');
+      },
     } as any;
     const caller = appRouter.createCaller({
       db: fakeDb,
@@ -110,9 +133,11 @@ describe('team API contract and billing security regression', () => {
       headers: {},
     });
 
-    await expect(caller.billing.updateSubscription({ organizationId: 'org-1', planId: 'pro' })).rejects.toMatchObject({
-      code: 'PRECONDITION_FAILED',
-    });
+    for (const planId of ['pro', 'enterprise', 'free'] as const) {
+      await expect(caller.billing.updateSubscription({ organizationId: 'org-1', planId })).rejects.toMatchObject({
+        code: 'PRECONDITION_FAILED',
+      });
+    }
     expect(writes).toBe(0);
   });
 });

@@ -20,7 +20,11 @@ export class ApiError extends Error {
 }
 
 export async function getAuthToken(): Promise<string | null> {
-  return secureStorage.get(TOKEN_KEY);
+  try {
+    return await secureStorage.get(TOKEN_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export async function setAuthToken(token: string | null): Promise<void> {
@@ -38,6 +42,7 @@ async function request<T>(
   const res = await fetch(`${config.apiUrl}${path}`, {
     method: options.method ?? 'GET',
     signal: rest.signal,
+    credentials: 'include',
     headers: {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),

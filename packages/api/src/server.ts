@@ -7,9 +7,23 @@ import { appRouter } from './router';
 import { createContext } from './context';
 import { getAuth } from './auth';
 import { captureServerException, getServerMonitoring } from '@repo/monitoring/server';
+import { parseAllowedOrigins, resolveCorsOrigin, securityHeaders } from './http-security';
 
 export const app = new Hono();
 const serverMonitoring = getServerMonitoring();
+const allowedOrigins = parseAllowedOrigins(process.env.CORS_ALLOWED_ORIGINS);
+const isProduction = process.env.NODE_ENV === 'production';
+
+function applySecurityHeaders(response: Response): Response {
+  for (const [name, value] of Object.entries(securityHeaders)) response.headers.set(name, value);
+  if (isProduction) response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+  return response;
+}
+
+app.use('*', async (c, next) => {
+  await next();
+  applySecurityHeaders(c.res);
+});
 
 app.onError((error, c) => {
   const status = error instanceof HTTPException ? error.status : 500;
@@ -22,15 +36,16 @@ app.onError((error, c) => {
     status,
     requestId: c.req.header('x-request-id'),
   });
-  if (error instanceof HTTPException) return error.getResponse();
-  return c.json({ error: 'internal_server_error' }, 500);
+  if (error instanceof HTTPException) return applySecurityHeaders(error.getResponse());
+  return applySecurityHeaders(c.json({ error: 'internal_server_error' }, 500));
 });
 
 app.use('*', logger());
 app.use(
   '*',
   cors({
-    origin: '*',
+    origin: (origin) => resolveCorsOrigin(origin, allowedOrigins),
+    credentials: true,
     allowHeaders: ['Content-Type', 'Authorization'],
     allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   })
@@ -49,7 +64,7 @@ app.use(
   })
 );
 
-app.all('/webhooks/*', (c) => c.json({ ok: true, provider: c.req.path.split('/')[2] ?? 'unknown' }));
+app.all('/webhooks/*', (c) => c.json({ error: 'webhook_not_configured' }, 501));
 
 export default app;
 

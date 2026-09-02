@@ -183,7 +183,7 @@
 
 - **Do not bypass abstraction:** provider logic must never be in `apps/mobile`, `packages/api`, or `packages/database`. New code in `packages/billing/src/*` only (provider interface + entitlements service), consumed by `packages/api/src/router.ts` billing procedures.
 - **Mobile stays ignorant:** screens call `trpc.billing.*` (tRPC) which delegates to server-side `getEntitlement`/`getSubscription`; no `STRIPE_SECRET_KEY` in bundle (private env stays in `packages/config` private, `packages/api` server).
-- **Provider implementations deferred:** real `RevenueCatProvider`/`StripeProvider` classes are stubs behind `BillingProvider` interface in 3.1. Webhooks remain handlers with HMAC verification deferred to 3.9 (add interface, not fake insecure handler). This milestones ships the **abstraction + DB state + resolver + RBAC**, not the App Store sheet.
+- **Provider implementations deferred:** real `RevenueCatProvider`/`StripeProvider` classes are stubs behind `BillingProvider`; no insecure fake webhook handler was added. Phase 3.9 makes unimplemented webhook routes return `501`; signed verification, reconciliation, and idempotency remain required before provider activation.
 - **Package deps minimal:** `packages/billing` gains `@repo/database` (server resolver) but only via server import path (tRPC server imports it). Mobile path (`@repo/billing` client) must not import `better-auth` or `R2_*`. Verified by dependency graph §6 of Phase 3 spec — acyclic.
 
 ---

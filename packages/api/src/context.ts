@@ -2,6 +2,7 @@ import type { Context as HonoContext } from 'hono';
 import { getDb } from '@repo/database';
 import { eq } from 'drizzle-orm';
 import { sessions, users } from '@repo/database';
+import { getAuth } from './auth';
 
 export type ApiContext = {
   db: ReturnType<typeof getDb>;
@@ -10,6 +11,10 @@ export type ApiContext = {
   headers: Record<string, string>;
 };
 
+export function isDevAuthEnabled(env: Record<string, string | undefined> = process.env): boolean {
+  return env.NODE_ENV === 'development' && env.ENABLE_DEV_AUTH === 'true';
+}
+
 export async function createContext(c: HonoContext): Promise<ApiContext> {
   const db = getDb();
   const auth = c.req.header('authorization') ?? c.req.header('Authorization');
@@ -17,8 +22,7 @@ export async function createContext(c: HonoContext): Promise<ApiContext> {
   let user: ApiContext['user'] = null;
   let sessionId: string | null = null;
 
-  // Dev mock: allow Authorization: Bearer dev-token to return a fake user without DB
-  if (token === 'dev-token') {
+  if (token === 'dev-token' && isDevAuthEnabled()) {
     user = { id: 'u_dev', email: 'dev@example.com', name: 'Dev User', emailVerified: true, image: null, createdAt: new Date(), updatedAt: new Date() } as unknown as ApiContext['user'];
     sessionId = 'sess_dev';
     return { db, user, sessionId, headers: Object.fromEntries(c.req.raw.headers.entries()) };
@@ -46,6 +50,18 @@ export async function createContext(c: HonoContext): Promise<ApiContext> {
       }
     } catch {
       // DB unavailable - treat as unauthenticated, do not throw
+    }
+  }
+
+  if (!user && !token) {
+    try {
+      const authSession = await getAuth().api.getSession({ headers: c.req.raw.headers });
+      if (authSession?.user) {
+        user = authSession.user as unknown as ApiContext['user'];
+        sessionId = authSession.session.id;
+      }
+    } catch {
+      // Invalid/expired cookies are treated as unauthenticated.
     }
   }
 

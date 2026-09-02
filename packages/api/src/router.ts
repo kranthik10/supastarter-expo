@@ -15,6 +15,8 @@ import {
   canTransferOwnership,
   generateInvitationToken,
   hashInvitationToken,
+  persistedInvitationToken,
+  publicInvitation,
   invitationCreateRateLimiter,
   invitationRedeemRateLimiter,
   invitationRequestState,
@@ -24,7 +26,7 @@ import {
 import { getInvitationEmailProvider } from './email';
 import { cleanupExpiredFiles, getOrganizationStorageUsage } from './storage-service';
 import { getStorageProvider, StorageProviderError, type StorageProvider } from '@repo/storage/server';
-import { buildObjectKey, canConfirmFile, canReserveStorage, DOWNLOAD_URL_EXPIRY_SECONDS, storageLimitBytes, UPLOAD_URL_EXPIRY_SECONDS, validateUploadMetadata } from '@repo/storage/policy';
+import { buildObjectKey, canConfirmFile, canReserveStorage, DOWNLOAD_URL_EXPIRY_SECONDS, MAX_FILE_SIZE_BYTES, storageLimitBytes, UPLOAD_URL_EXPIRY_SECONDS, validateUploadMetadata } from '@repo/storage/policy';
 import { createNotification } from '@repo/notifications/server';
 import { captureServerEvent, getServerAnalyticsProvider } from '@repo/analytics/server';
 import { decodeNotificationCursor, encodeNotificationCursor, isExpoPushToken, notificationCategories, parseNotificationData } from '@repo/notifications/policy';
@@ -88,6 +90,7 @@ function isUniqueViolation(error: unknown): boolean {
   return typeof error === 'object' && error !== null && 'code' in error && (error as { code?: string }).code === '23505';
 }
 
+const idSchema = z.string().trim().min(1).max(128);
 const profilePatchSchema = z
   .object({
     name: z.string().trim().min(1).max(120).optional(),
@@ -112,10 +115,10 @@ const preferencesPatchSchema = z
 
 const storageIntentSchema = z
   .object({
-    organizationId: z.string().min(1).optional(),
+    organizationId: idSchema.min(1).optional(),
     filename: z.string().trim().min(1).max(255),
-    contentType: z.string().trim().toLowerCase().min(1),
-    size: z.number().int(),
+    contentType: z.string().trim().toLowerCase().min(1).max(128),
+    size: z.number().int().min(1).max(MAX_FILE_SIZE_BYTES),
     purpose: z.enum(['avatar']).optional(),
   })
   .strict();
@@ -131,10 +134,11 @@ const pushTokenSchema = z
 const notificationListSchema = z
   .object({
     limit: z.number().int().min(1).max(100).default(20),
-    cursor: z.string().min(1).optional(),
+    cursor: z.string().trim().min(1).max(128).optional(),
   })
   .strict();
-const notificationIdSchema = z.object({ notificationId: z.string().min(1) }).strict();
+const notificationIdSchema = z.object({ notificationId: idSchema }).strict();
+const tokenSchema = z.string().trim().min(1).max(128);
 
 function safeNotificationData(value: unknown): Record<string, string> | null {
   const parsed = parseNotificationData(value);
@@ -269,6 +273,16 @@ async function expirePendingInvitations(db: any, organizationId: string, now: Da
   }
 }
 
+type DatabaseLike = Pick<ReturnType<typeof getDb>, 'select'>;
+
+async function findInvitationByPresentedToken(db: DatabaseLike, token: string): Promise<typeof invitations.$inferSelect | null> {
+  const digest = persistedInvitationToken(token);
+  const [hashed] = await db.select().from(invitations).where(eq(invitations.token, digest)).limit(1);
+  if (hashed) return hashed;
+  const [legacy] = await db.select().from(invitations).where(eq(invitations.token, token)).limit(1);
+  return legacy ?? null;
+}
+
 async function createInvitation(
   db: any,
   input: { organizationId: string; email: string; role: Exclude<MemberRole, 'owner'> },
@@ -315,7 +329,7 @@ async function createInvitation(
           organizationId: input.organizationId,
           email,
           role: input.role,
-          token,
+          token: persistedInvitationToken(token),
           invitedBy: actor.id,
           expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
           status: 'pending',
@@ -344,7 +358,7 @@ async function createInvitation(
   }
 
   return {
-    invitation,
+    invitation: publicInvitation(invitation),
     emailDelivered: delivery.delivered,
     emailStatus: delivery.status,
   };
@@ -369,7 +383,8 @@ export const appRouter = router({
           .select({ org: organizations })
           .from(organizationMembers)
           .innerJoin(organizations, eq(organizationMembers.organizationId, organizations.id))
-          .where(eq(organizationMembers.userId, ctx.user!.id));
+          .where(eq(organizationMembers.userId, ctx.user!.id))
+          .limit(100);
         return memberships.map((m) => m.org);
       } catch {
         if (ctx.user!.id === 'u_dev') return [{ id: 'org_demo', name: 'Demo Organization', slug: 'demo', logoUrl: null, createdAt: new Date(), updatedAt: new Date() }];
@@ -378,7 +393,7 @@ export const appRouter = router({
     }),
 
     create: protectedProcedure
-      .input(z.object({ name: z.string().min(2), slug: z.string().min(2).regex(/^[a-z0-9-]+$/) }))
+      .input(z.object({ name: z.string().trim().min(2).max(120), slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9-]+$/) }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const id = createId();
@@ -392,7 +407,7 @@ export const appRouter = router({
         return row;
       }),
 
-    get: protectedProcedure.input(z.object({ slug: z.string() })).query(async ({ ctx, input }) => {
+    get: protectedProcedure.input(z.object({ slug: z.string().trim().min(1).max(120) })).query(async ({ ctx, input }) => {
       const db = ctx.db ?? getDb();
       const [org] = await db.select().from(organizations).where(eq(organizations.slug, input.slug)).limit(1);
       if (!org) throw new TRPCError({ code: 'NOT_FOUND' });
@@ -406,7 +421,7 @@ export const appRouter = router({
     }),
 
     update: protectedProcedure
-      .input(z.object({ organizationId: z.string(), name: z.string().min(2).optional(), slug: z.string().min(2).optional() }))
+      .input(z.object({ organizationId: idSchema, name: z.string().trim().min(2).max(120).optional(), slug: z.string().trim().min(2).max(120).regex(/^[a-z0-9-]+$/).optional() }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [member] = await db
@@ -425,7 +440,7 @@ export const appRouter = router({
       }),
 
     transferOwnership: protectedProcedure
-      .input(z.object({ organizationId: z.string(), targetUserId: z.string() }))
+      .input(z.object({ organizationId: idSchema, targetUserId: idSchema }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const result = await db.transaction(async (tx) => {
@@ -471,7 +486,7 @@ export const appRouter = router({
   }),
 
   members: router({
-    list: protectedProcedure.input(z.object({ organizationId: z.string() })).query(async ({ ctx, input }) => {
+    list: protectedProcedure.input(z.object({ organizationId: idSchema })).query(async ({ ctx, input }) => {
       const db = ctx.db ?? getDb();
       const [actor] = await db
         .select()
@@ -484,7 +499,8 @@ export const appRouter = router({
         .select({ membership: organizationMembers, user: { id: users.id, name: users.name, email: users.email, image: users.image } })
         .from(organizationMembers)
         .innerJoin(users, eq(users.id, organizationMembers.userId))
-        .where(eq(organizationMembers.organizationId, input.organizationId));
+        .where(eq(organizationMembers.organizationId, input.organizationId))
+        .limit(100);
       return rows.map((row) => ({
         organizationId: input.organizationId,
         user: row.user,
@@ -494,7 +510,7 @@ export const appRouter = router({
     }),
 
     invite: protectedProcedure
-      .input(z.object({ organizationId: z.string(), email: z.string().trim().email(), role: z.enum(['member', 'admin']).default('member') }))
+      .input(z.object({ organizationId: idSchema, email: z.string().trim().max(320).email(), role: z.enum(['member', 'admin']).default('member') }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [actor] = await db
@@ -507,7 +523,7 @@ export const appRouter = router({
       }),
 
     updateRole: protectedProcedure
-      .input(z.object({ organizationId: z.string(), userId: z.string(), role: z.enum(['owner', 'admin', 'member']) }))
+      .input(z.object({ organizationId: idSchema, userId: idSchema, role: z.enum(['owner', 'admin', 'member']) }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         return db.transaction(async (tx: any) => {
@@ -543,7 +559,7 @@ export const appRouter = router({
       }),
 
     remove: protectedProcedure
-      .input(z.object({ organizationId: z.string(), userId: z.string() }))
+      .input(z.object({ organizationId: idSchema, userId: idSchema }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const result = await db.transaction(async (tx) => {
@@ -585,7 +601,7 @@ export const appRouter = router({
 
   invitations: router({
     create: protectedProcedure
-      .input(z.object({ organizationId: z.string(), email: z.string().trim().email(), role: z.enum(['member', 'admin']).default('member') }))
+      .input(z.object({ organizationId: idSchema, email: z.string().trim().max(320).email(), role: z.enum(['member', 'admin']).default('member') }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [actor] = await db
@@ -598,7 +614,7 @@ export const appRouter = router({
       }),
 
     list: protectedProcedure
-      .input(z.object({ organizationId: z.string() }))
+      .input(z.object({ organizationId: idSchema }))
       .query(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [actor] = await db
@@ -622,18 +638,19 @@ export const appRouter = router({
           })
           .from(invitations)
           .where(and(eq(invitations.organizationId, input.organizationId), eq(invitations.status, 'pending')))
-          .orderBy(desc(invitations.createdAt));
+          .orderBy(desc(invitations.createdAt))
+          .limit(100);
       }),
 
     accept: protectedProcedure
-      .input(z.object({ token: z.string().min(1) }))
+      .input(z.object({ token: tokenSchema }))
       .mutation(async ({ ctx, input }) => {
         if (!invitationRedeemRateLimiter.consume(`${ctx.user!.id}:accept`)) {
           throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'invitation_rate_limited' });
         }
         const db = ctx.db ?? getDb();
         const result = await db.transaction(async (tx: any) => {
-          const [invitation] = await tx.select().from(invitations).where(eq(invitations.token, input.token)).limit(1);
+          const invitation = await findInvitationByPresentedToken(tx, input.token);
           if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'invitation_not_found' });
           const state = invitationRequestState(invitation.status, invitation.expiresAt, new Date());
           if (state === 'not_pending') reasonError('invitation_not_pending');
@@ -683,7 +700,7 @@ export const appRouter = router({
             });
             const [updated] = await tx
               .update(invitations)
-              .set({ status: 'accepted', respondedAt: new Date() })
+              .set({ status: 'accepted', respondedAt: new Date(), token: persistedInvitationToken(input.token) })
               .where(and(eq(invitations.id, invitation.id), eq(invitations.status, 'pending')))
               .returning();
             if (!updated) reasonError('invitation_not_pending');
@@ -721,14 +738,14 @@ export const appRouter = router({
       }),
 
     decline: protectedProcedure
-      .input(z.object({ token: z.string().min(1) }))
+      .input(z.object({ token: tokenSchema }))
       .mutation(async ({ ctx, input }) => {
         if (!invitationRedeemRateLimiter.consume(`${ctx.user!.id}:decline`)) {
           throw new TRPCError({ code: 'TOO_MANY_REQUESTS', message: 'invitation_rate_limited' });
         }
         const db = ctx.db ?? getDb();
         const result = await db.transaction(async (tx: any) => {
-          const [invitation] = await tx.select().from(invitations).where(eq(invitations.token, input.token)).limit(1);
+          const invitation = await findInvitationByPresentedToken(tx, input.token);
           if (!invitation) throw new TRPCError({ code: 'NOT_FOUND', message: 'invitation_not_found' });
           const state = invitationRequestState(invitation.status, invitation.expiresAt, new Date());
           if (state === 'not_pending') reasonError('invitation_not_pending');
@@ -755,7 +772,7 @@ export const appRouter = router({
           if (normalizeEmail(ctx.user!.email) !== normalizeEmail(invitation.email)) reasonError('invitation_email_mismatch', 'FORBIDDEN');
           const [updated] = await tx
             .update(invitations)
-            .set({ status: 'revoked', respondedAt: new Date() })
+            .set({ status: 'revoked', respondedAt: new Date(), token: persistedInvitationToken(input.token) })
             .where(and(eq(invitations.id, invitation.id), eq(invitations.status, 'pending')))
             .returning();
           if (!updated) reasonError('invitation_not_pending');
@@ -774,7 +791,7 @@ export const appRouter = router({
       }),
 
     revoke: protectedProcedure
-      .input(z.object({ organizationId: z.string(), invitationId: z.string() }))
+      .input(z.object({ organizationId: idSchema, invitationId: idSchema }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const result = await db.transaction(async (tx: any) => {
@@ -1040,7 +1057,7 @@ export const appRouter = router({
       }),
 
     confirmUpload: protectedProcedure
-      .input(z.object({ fileId: z.string().min(1), purpose: z.enum(['avatar']).optional() }).strict())
+      .input(z.object({ fileId: idSchema, purpose: z.enum(['avatar']).optional() }).strict())
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const provider = getStorageProvider();
@@ -1114,7 +1131,7 @@ export const appRouter = router({
       }),
 
     getDownloadUrl: protectedProcedure
-      .input(z.object({ fileId: z.string().min(1) }).strict())
+      .input(z.object({ fileId: idSchema }).strict())
       .query(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const provider = getStorageProvider();
@@ -1131,7 +1148,7 @@ export const appRouter = router({
       }),
 
     listFiles: protectedProcedure
-      .input(z.object({ organizationId: z.string().min(1).optional() }).strict())
+      .input(z.object({ organizationId: idSchema.min(1).optional() }).strict())
       .query(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         if (input.organizationId) {
@@ -1161,12 +1178,13 @@ export const appRouter = router({
               ? and(eq(files.organizationId, input.organizationId), ne(files.status, 'deleted'))
               : and(isNull(files.organizationId), eq(files.userId, ctx.user!.id), ne(files.status, 'deleted'))
           )
-          .orderBy(desc(files.createdAt));
+          .orderBy(desc(files.createdAt))
+          .limit(100);
         return rows;
       }),
 
     deleteFile: protectedProcedure
-      .input(z.object({ fileId: z.string().min(1) }).strict())
+      .input(z.object({ fileId: idSchema }).strict())
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const provider = getStorageProvider();
@@ -1266,11 +1284,12 @@ export const appRouter = router({
         })
         .from(sessions)
         .where(eq(sessions.userId, ctx.user!.id))
-        .orderBy(desc(sessions.createdAt));
+        .orderBy(desc(sessions.createdAt))
+        .limit(100);
     }),
 
     revokeSession: protectedProcedure
-      .input(z.object({ sessionId: z.string().min(1) }))
+      .input(z.object({ sessionId: idSchema }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [deleted] = await db
@@ -1327,7 +1346,7 @@ export const appRouter = router({
 
   dashboard: router({
     overview: protectedProcedure
-      .input(z.object({ organizationId: z.string().min(1) }).strict())
+      .input(z.object({ organizationId: idSchema.min(1) }).strict())
       .query(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [access] = await db
@@ -1378,7 +1397,7 @@ export const appRouter = router({
 
   billing: router({
     getSubscription: protectedProcedure
-      .input(z.object({ organizationId: z.string() }))
+      .input(z.object({ organizationId: idSchema }))
       .query(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [member] = await db
@@ -1393,7 +1412,7 @@ export const appRouter = router({
       }),
 
     listEntitlements: protectedProcedure
-      .input(z.object({ organizationId: z.string() }))
+      .input(z.object({ organizationId: idSchema }))
       .query(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [member] = await db
@@ -1407,7 +1426,7 @@ export const appRouter = router({
       }),
 
     getEntitlement: protectedProcedure
-      .input(z.object({ organizationId: z.string(), feature: z.enum(['projects.limit', 'members.limit', 'storage.gb', 'ai.tokens']) }))
+      .input(z.object({ organizationId: idSchema, feature: z.enum(['projects.limit', 'members.limit', 'storage.gb', 'ai.tokens']) }))
       .query(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [member] = await db
@@ -1421,7 +1440,7 @@ export const appRouter = router({
       }),
 
     updateSubscription: protectedProcedure
-      .input(z.object({ organizationId: z.string(), planId: z.enum(['free', 'pro', 'enterprise']) }))
+      .input(z.object({ organizationId: idSchema, planId: z.enum(['free', 'pro', 'enterprise']) }))
       .mutation(async ({ ctx, input }) => {
         const db = ctx.db ?? getDb();
         const [member] = await db
@@ -1431,28 +1450,7 @@ export const appRouter = router({
           .limit(1);
         if (!member) throw new TRPCError({ code: 'FORBIDDEN' });
         requirePermission(member.role as MemberRole, 'billing.manage');
-        if (input.planId !== 'free') {
-          throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'Billing provider not configured — paid plans require verified provider state' });
-        }
-        const [existing] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, input.organizationId)).limit(1);
-        if (existing) {
-          await db
-            .update(subscriptions)
-            .set({ planId: input.planId, status: 'active', updatedAt: new Date(), cancelAtPeriodEnd: false, trialEndsAt: null, graceEndsAt: null })
-            .where(eq(subscriptions.organizationId, input.organizationId));
-        } else {
-          await db.insert(subscriptions).values({
-            id: createId(),
-            organizationId: input.organizationId,
-            planId: input.planId,
-            status: 'active',
-            provider: 'stripe',
-            currentPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
-          });
-        }
-        await syncEntitlementsForPlan(db, input.organizationId, input.planId);
-        const [updated] = await db.select().from(subscriptions).where(eq(subscriptions.organizationId, input.organizationId)).limit(1);
-        return updated;
+        throw new TRPCError({ code: 'PRECONDITION_FAILED', message: 'subscription_state_provider_only' });
       }),
   }),
 });

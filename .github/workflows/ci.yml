@@ -29,3 +29,4 @@ jobs:
         run: |
           pnpm --filter @repo/database db:generate
           git diff --exit-code -- packages/database/drizzle
+          test -z "$(git ls-files --others --exclude-standard -- packages/database/drizzle)"

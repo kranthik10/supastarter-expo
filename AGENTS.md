@@ -50,7 +50,7 @@ directly:
 | Category | Entry point | Swap-in point |
 | --- | --- | --- |
 | API | `api/client.ts` | `config.apiUrl` / `setAuthToken` |
-| AI chat | `ai/chat.ts` (`streamChat`) | any OpenAI-compatible endpoint via `EXPO_PUBLIC_AI_API_KEY`; offline mock without key |
+| AI chat | `ai/chat.ts` (`streamChat`) | local offline mock; real provider credentials must remain server-side |
 | File upload | `storage/files.ts` (`uploadFile`) | backend `POST /files/presign` |
 | Analytics | `analytics/index.ts` | `setAnalyticsProvider()` |
 | Push | `notifications/push.ts` | install expo-notifications, implement `getPushToken` |

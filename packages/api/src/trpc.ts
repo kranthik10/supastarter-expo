@@ -10,6 +10,7 @@ export function createTRPC() {
       httpBatchLink({
         url: `${config.apiUrl}/api/trpc`,
         transformer: superjson,
+        fetch: (input, init) => fetch(input, { ...init, credentials: 'include' }),
         headers: async () => {
           const token = await getAuthToken();
           return token ? { Authorization: `Bearer ${token}` } : {};

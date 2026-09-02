@@ -13,9 +13,39 @@ export function generateInvitationToken(): string {
   return randomBytes(32).toString('hex');
 }
 
-/** Store only this digest in audit metadata; never store/log the raw token. */
+/** Return a SHA-256 digest for persistence/audit; never expose the raw bearer token. */
 export function hashInvitationToken(token: string): string {
   return createHash('sha256').update(token, 'utf8').digest('hex');
+}
+
+/** Store a one-way digest in the invitation token column. */
+export function persistedInvitationToken(token: string): string {
+  return hashInvitationToken(token);
+}
+
+export type PublicInvitationSource = {
+  id: string;
+  organizationId: string;
+  email: string;
+  role: MemberRole;
+  token: string;
+  status: InvitationStatus;
+  expiresAt: Date | string;
+  respondedAt: Date | string | null;
+  createdAt: Date | string;
+};
+
+export function publicInvitation(row: PublicInvitationSource) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    email: row.email,
+    role: row.role,
+    status: row.status,
+    expiresAt: row.expiresAt,
+    respondedAt: row.respondedAt,
+    createdAt: row.createdAt,
+  };
 }
 
 export function invitationRequestState(status: InvitationStatus, expiresAt: Date | string, now = new Date()): 'pending' | 'expired' | 'not_pending' {

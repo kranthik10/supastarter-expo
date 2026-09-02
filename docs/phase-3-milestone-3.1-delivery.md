@@ -36,7 +36,7 @@ Billing foundation + subscription lifecycle + org-scoped entitlements + server-e
   - `billing.getSubscription {organizationId}` → `billing.read`, returns row or null
   - `billing.listEntitlements {organizationId}` → `billing.read`, returns `listEntitlements(db, orgId)` (4 features, subscription-gated)
   - `billing.getEntitlement {organizationId, feature}` → `billing.read`, `ALL_FEATURES` enum, `getEntitlement`
-  - `billing.updateSubscription {organizationId, planId}` → `billing.manage`, **security-fixed**: only `free` is allowed via this direct mutation; non-free (`pro`/`enterprise`) throws `PRECONDITION_FAILED Billing provider not configured — paid plans require verified provider state` until Stripe/RevenueCat webhook sync is live. For Phase 3.1 without live providers, paid plans are `NOT_CONFIGURED`; internal/test helper `syncEntitlementsForPlan` remains available server-side for entitlement testing without forging provider state. Free plan upserts `subscriptions` (`status active`, `provider stripe`, `currentPeriodEnd +30d`) and syncs entitlements.
+  - `billing.updateSubscription {organizationId, planId}` → `billing.manage`, now fail-closed with `PRECONDITION_FAILED subscription_state_provider_only`; no ordinary client mutation writes subscription state. Paid/free state requires trusted provider synchronization. The server-only `syncEntitlementsForPlan` helper remains available for controlled initialization/testing.
 - `package.json` — added `@repo/billing` dep; graph acyclic (`storage→api→billing` remains single direction, `billing` no longer depends on `@repo/storage` — cycle broken, `pnpm install` no warn).
 
 ### Permissions
@@ -119,9 +119,9 @@ Untracked docs (not yet committed per instruction): `docs/phase-3-milestone-3.1-
 ## Security notes
 
 - No `STRIPE_SECRET_KEY`, `REVENUECAT_SECRET_KEY`, `DATABASE_URL`, `BETTER_AUTH_SECRET`, `R2_*` in `apps/mobile` or `packages/billing/src/index.ts` (mobile path). Server secrets stay in `packages/config` private env and `packages/api` server routes only.
-- `BillingProvider` methods that would need secrets throw `Billing not configured` unless `BILLING_PROVIDER` set server-side; webhook verification deferred to 3.9 with HMAC fail-closed.
+- `BillingProvider` methods that would need secrets throw `Billing not configured` unless configured server-side; signed webhook verification and reconciliation remain required before provider activation.
 - All `organizationId` from client validated via `organizationMembers` membership + `assertCan` before any DB read/write. Org A cannot read Org B entitlements (tested).
-- **Correction before commit (2026-09-01):** `billing.updateSubscription` previously allowed a `billing.manage` client to forge `pro`/`enterprise` by directly writing `subscriptions.status=active`. Fixed to allow only `free` via this client mutation; paid plans now throw `PRECONDITION_FAILED` until verified provider state (BillingProvider → Stripe/RevenueCat → webhook → server sync) is present. Tests use server helper `syncEntitlementsForPlan` directly, not the client procedure, so paid entitlement behavior remains testable without forging provider state.
+- **Correction before commit (2026-09-01):** `billing.updateSubscription` previously allowed a `billing.manage` client to forge `pro`/`enterprise` by directly writing `subscriptions.status=active`. Phase 3.9 now fails this client mutation for every plan with `subscription_state_provider_only`; paid/free state requires verified provider synchronization. Tests use server helper `syncEntitlementsForPlan` directly, not the client procedure, so entitlement behavior remains testable without forging provider state.
 
 ---
 

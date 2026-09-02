@@ -26,7 +26,7 @@ const secureAvailable = Platform.OS === 'ios' || Platform.OS === 'android';
 
 export const secureStorage = {
   async get(key: string): Promise<string | null> {
-    if (!secureAvailable) return storage.get(key);
+    if (!secureAvailable) return null;
     try {
       return await SecureStore.getItemAsync(key);
     } catch {
@@ -34,13 +34,13 @@ export const secureStorage = {
     }
   },
   async set(key: string, value: string): Promise<void> {
-    if (!secureAvailable) return storage.set(key, value);
+    if (!secureAvailable) return;
     try {
       await SecureStore.setItemAsync(key, value);
     } catch {}
   },
   async remove(key: string): Promise<void> {
-    if (!secureAvailable) return storage.remove(key);
+    if (!secureAvailable) return;
     try {
       await SecureStore.deleteItemAsync(key);
     } catch {}

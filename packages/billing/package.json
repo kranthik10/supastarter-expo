@@ -14,7 +14,7 @@
     "@paralleldrive/cuid2": "^2.2.2",
     "@repo/database": "workspace:*",
     "@repo/types": "workspace:*",
-    "drizzle-orm": "^0.44.2",
+    "drizzle-orm": "^0.45.2",
     "zustand": "^5.0.15"
   },
   "scripts": {

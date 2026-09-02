@@ -370,7 +370,7 @@ export const auditLogs = pgTable('audit_logs', {
 - `users(email)` citext-like: app normalizes to lowercase; unique index enforces it.
 - `organization_members(organization_id, user_id)` unique — a user has exactly one role per org.
 - `sessions(token)` unique + short TTL (Better Auth default 30d sliding).
-- `invitations(token)` unique + expiry check in service (7d).
+- `invitations(token)` unique digest + expiry check in service (7d).
 - `push_tokens(token)` unique — dedup across reinstall.
 
 ---
@@ -458,7 +458,7 @@ export function assertCan(role: Role, permission: Permission): void { /* throws 
 
 ### 6.3 Invitations
 
-`POST /trpc/invitations.create` → creates `invitations` row with `token` (cryptographic, 48 hex chars, 7d expiry) + sends email (Resend). Accept via deep link `myapp://invite/<token>` → `POST /trpc/invitations.accept` which creates `organization_members`.
+`POST /trpc/invitations.create` → creates `invitations` row with a SHA-256 token digest (cryptographic raw token is 64 hex characters, 7d expiry) and sends the raw token only through the email/deep-link transport boundary. Accept via deep link `myapp://invite/<token>` → `POST /trpc/invitations.accept` which creates `organization_members`.
 
 ---
 

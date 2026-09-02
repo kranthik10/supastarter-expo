@@ -1,20 +1,37 @@
 import { createAuthClient } from '@better-auth/client';
-import { storage, secureStorage } from './storage';
+import { secureStorage } from './storage';
+import { extractSessionToken, parsePersistedSession } from './security';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const AUTH_BASE_URL = `${API_URL}/api/auth`;
+const AUTH_TOKEN_KEY = 'auth.token';
+
+const authFetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const token = await secureStorage.get(AUTH_TOKEN_KEY);
+  const headers = new Headers(init?.headers);
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(input, { ...init, headers, credentials: 'include' });
+};
 
 // createAuthClient returns a factory; call it with options to get the client
 // Use 'any' to bypass complex conditional types - runtime API works
 const authClient: any = createAuthClient()({
   baseURL: AUTH_BASE_URL,
-  fetchOptions: {
-    credentials: 'include',
+  betterFetchOptions: {
+    customFetchImpl: authFetch,
   },
 });
 
-type Session = Awaited<ReturnType<typeof authClient.getSession>>;
-type BetterAuthUser = NonNullable<Session>['user'];
+type Session = { token: string };
+type BetterAuthUser = {
+  id: string;
+  name: string | null;
+  email: string;
+  image: string | null;
+  emailVerified: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+};
 
 export type User = {
   id: string;
@@ -59,11 +76,13 @@ function mapBetterAuthUser(bUser: BetterAuthUser): User {
   };
 }
 
-async function persistSession(user: User | null, session: Session | null) {
-  if (user && session) {
-    await secureStorage.set(SESSION_KEY, JSON.stringify({ user, session }));
+async function persistSession(user: User | null, sessionToken: string | null) {
+  if (user && sessionToken) {
+    await secureStorage.set(SESSION_KEY, JSON.stringify({ user, sessionToken }));
+    await secureStorage.set(AUTH_TOKEN_KEY, sessionToken);
   } else {
     await secureStorage.remove(SESSION_KEY);
+    await secureStorage.remove(AUTH_TOKEN_KEY);
   }
 }
 
@@ -78,71 +97,79 @@ export const useAuth = create<AuthState>((set, get) => ({
 
   hydrate: async () => {
     try {
-      const raw = await secureStorage.get(SESSION_KEY);
-      if (raw) {
-        const { user, session } = JSON.parse(raw) as { user: User; session: Session };
-        set({ user, session, hydrated: true });
+      const persisted = parsePersistedSession(await secureStorage.get(SESSION_KEY));
+      if (persisted) await secureStorage.set(AUTH_TOKEN_KEY, persisted.sessionToken);
+      const remote = await authClient.getSession();
+      if (remote?.user) {
+        const user = mapBetterAuthUser(remote.user as BetterAuthUser);
+        const sessionToken = persisted?.sessionToken ?? (await secureStorage.get(AUTH_TOKEN_KEY));
+        set({ user, session: sessionToken ? { token: sessionToken } : null, hydrated: true });
+        if (sessionToken) await persistSession(user, sessionToken);
         return;
       }
     } catch {}
-    set({ hydrated: true });
+    set({ user: null, session: null, hydrated: true });
+    await persistSession(null, null);
   },
 
   refreshSession: async () => {
     try {
-      const session = await authClient.getSession();
-      if (session?.user) {
-        const user = mapBetterAuthUser(session.user);
-        set({ user, session });
-        await persistSession(user, session);
-      } else {
-        set({ user: null, session: null, lastAuthEvent: null });
-        await persistSession(null, null);
+      const remote = await authClient.getSession();
+      const sessionToken = await secureStorage.get(AUTH_TOKEN_KEY);
+      if (remote?.user) {
+        const user = mapBetterAuthUser(remote.user as BetterAuthUser);
+        set({ user, session: sessionToken ? { token: sessionToken } : null });
+        if (sessionToken) await persistSession(user, sessionToken);
+        return;
       }
-    } catch {
-      set({ user: null, session: null, lastAuthEvent: null });
-      await persistSession(null, null);
-    }
+    } catch {}
+    set({ user: null, session: null, lastAuthEvent: null });
+    await persistSession(null, null);
   },
 
   signIn: async (email, password) => {
     set({ loading: true });
-    const result = await authClient.signIn.email({ email, password });
-    if (result.error) {
-      set({ loading: false });
-      throw new Error(result.error.message);
-    }
-    if (result.data?.user && result.data?.session) {
-      const user = mapBetterAuthUser(result.data.user);
-      set({ user, session: result.data.session, lastAuthEvent: 'signed_in', loading: false });
-      await persistSession(user, result.data.session);
-    } else {
-      set({ loading: false });
+    try {
+      const result = await authClient.signIn.email({ email, password });
+      if (result.error) throw new Error(result.error.message);
+      const sessionToken = extractSessionToken(result.data);
+      if (result.data?.user && sessionToken) {
+        const user = mapBetterAuthUser(result.data.user as BetterAuthUser);
+        set({ user, session: { token: sessionToken }, lastAuthEvent: 'signed_in' });
+        await persistSession(user, sessionToken);
+        return;
+      }
       throw new Error('Sign in failed');
+    } finally {
+      set({ loading: false });
     }
   },
 
   signUp: async (name, email, password) => {
     set({ loading: true });
-    const result = await authClient.signUp.email({ name, email, password, autoCreateSession: true });
-    if (result.error) {
-      set({ loading: false });
-      throw new Error(result.error.message);
-    }
-    if (result.data?.user && result.data?.session) {
-      const user = mapBetterAuthUser(result.data.user);
-      set({ user, session: result.data.session, lastAuthEvent: 'signed_up', loading: false });
-      await persistSession(user, result.data.session);
-    } else {
-      set({ loading: false });
+    try {
+      const result = await authClient.signUp.email({ name, email, password, autoCreateSession: true });
+      if (result.error) throw new Error(result.error.message);
+      const sessionToken = extractSessionToken(result.data);
+      if (result.data?.user && sessionToken) {
+        const user = mapBetterAuthUser(result.data.user as BetterAuthUser);
+        set({ user, session: { token: sessionToken }, lastAuthEvent: 'signed_up' });
+        await persistSession(user, sessionToken);
+        return;
+      }
       throw new Error('Sign up failed');
+    } finally {
+      set({ loading: false });
     }
   },
 
   signOut: async () => {
-    await authClient.signOut();
-    set({ user: null, session: null, lastAuthEvent: null });
-    await persistSession(null, null);
+    try {
+      await authClient.signOut();
+    } finally {
+      set({ user: null, session: null, lastAuthEvent: null });
+      await persistSession(null, null);
+    }
   },
 
   updateProfile: async (patch) => {
@@ -158,6 +185,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       body: { currentPassword, newPassword, revokeOtherSessions },
     });
     if (result.error) throw new Error(result.error.message ?? String(result.error));
+    await get().refreshSession();
   },
 
   clearLocalSession: async () => {

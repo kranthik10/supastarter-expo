@@ -18,7 +18,7 @@
 - Added `invitations_org_idx` for organization-scoped listing.
 - Added partial unique index `invitations_pending_org_email_uidx` on `(organization_id,email)` where `status='pending'`.
 - Did not add the proposed plaintext `code`; the secure token/deep link is the only redemption credential.
-- Existing invitation columns and tokens remain valid. No table/column drops or renames.
+- New invitation tokens are generated server-side with 32 random bytes, stored as SHA-256 digests, and omitted from API projections; the raw token is limited to the email/deep-link transport boundary. A bounded legacy lookup/migration path exists for pre-hardening plaintext rows.
 - Migration: `packages/database/drizzle/0002_lumpy_cardiac.sql`.
 
 ### Server invitation lifecycle

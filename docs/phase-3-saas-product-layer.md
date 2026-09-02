@@ -1,6 +1,6 @@
 # Phase 3 — SaaS Product Layer Architecture
 
-**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5 + Phase 3.6 + Phase 3.7 + Phase 3.8 implemented; Phase 3.9 and Phase 3.10 remain deferred
+**Status:** Phase 3.1 + Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5 + Phase 3.6 + Phase 3.7 + Phase 3.8 + Phase 3.9 implemented; Phase 3.10 remains deferred
 **Historical baseline:** `5c1ceba` (Phase 2)
 **Phase 3.1 checkpoint:** `c0f54f7`; documentation closure `33daf39`; GitHub Actions `33539998678` PASS
 **Phase 3.2 active baseline:** `f7517ae`; GitHub Actions `33544316656` PASS
@@ -10,6 +10,7 @@
 **Phase 3.6 active implementation:** Analytics recorded in `docs/phase-3-milestone-3.6-delivery.md`
 **Phase 3.7 active implementation:** Monitoring recorded in `docs/phase-3-milestone-3.7-delivery.md`
 **Phase 3.8 active implementation:** SaaS Dashboard is recorded in `docs/phase-3-milestone-3.8-audit.md` and `docs/phase-3-milestone-3.8-delivery.md`; the Home route uses the protected `dashboard.overview` aggregation with no schema change.
+**Phase 3.9 active implementation:** Production hardening is recorded in `docs/phase-3-milestone-3.9-audit.md`, `docs/phase-3-milestone-3.9-delivery.md`, and `docs/production-release-checklist.md`; external providers, distributed limits, native release, and scheduled operations remain explicit release gates.
 **Repository:** `kranthik10/supastarter-expo` (public, main)
 **Validation at historical baseline:** `typecheck: PASS` (26), `lint: PASS` (14), `test: PASS` (4 files, 30 tests), `build: PASS` (expo export), CI `33453674804` PASS
 **Current implementation validation:** Phase 3.1 CI `33539998678` PASS; Phase 3.2 CI `33544316656` PASS; Phase 3.3 local validation is recorded in `docs/phase-3-milestone-3.3-delivery.md`; Phase 3.4 local validation is recorded in `docs/phase-3-milestone-3.4-delivery.md`; Phase 3.5 local and CI validation is recorded in `docs/phase-3-milestone-3.5-delivery.md` (CI `33566334755` PASS for `f4eaf77`); Phase 3.6 and 3.7 validation are recorded in their delivery docs; Phase 3.8 local validation and CI run `33645460517` PASS are recorded in `docs/phase-3-milestone-3.8-delivery.md`.
@@ -449,7 +450,7 @@ create  → pending (token, expires 7d; email delivery reported separately)
         → expired (lazy transition on list/accept/decline/revoke)
 ```
 
-**Implemented columns:** `status enum`, `respondedAt`; no plaintext/code column. The secure token is the only redemption credential. New tokens are generated server-side with 32 random bytes and existing tokens remain valid. API normalizes email by trim + lowercase before membership/pending-invite checks.
+**Implemented columns:** `status enum`, `respondedAt`; the secure token is the only redemption credential. New 64-hex tokens are generated server-side, stored as SHA-256 digests, and never returned in API projections; legacy plaintext rows have a bounded compatibility path for terminal migration. API normalizes email by trim + lowercase before membership/pending-invite checks.
 
 **tRPC procedures (server-enforced):**
 
@@ -863,7 +864,7 @@ Phase 3 is Done when **all** of the following are true on `main` at a single che
 | Risk | Likelihood | Impact | Mitigation |
 |------|------------|--------|------------|
 | **Billing webhook divergence** (Stripe vs RevenueCat fields) | Medium | High — entitlements wrong | Single `subscriptions` upsert path; exhaustive webhook fixture tests; idempotency_key prevents double-billing |
-| **Invite token leakage** (email interception, brute force `code`) | Low | High — unauthorized org access | 48-hex `token` is cryptographic (`cuid2`); 6-char `code` rate-limited (5/min) + expires 7d + consumed on accept; audit log token hash only |
+| **Invite token leakage** (email interception, database compromise) | Low | High — unauthorized org access | 64-hex cryptographic raw token is sent only through the email/deep-link boundary; SHA-256 digest is stored; consumed on accept and expired/revoked lifecycle enforced; legacy plaintext rows require rotation before release |
 | **Permission sprawl** (new perm per feature) | High | Medium — maintenance, bugs | Reuse existing 11 permissions; only add when `billing.manage`/`members.invite` truly insufficient; ADR review for each new perm |
 | **R2 secret leak** via bundle or logs | Low | Critical | Confirmed via `EXPO_PUBLIC_*` allowlist + post-build grep; server logs redaction for `key` in presign payload |
 | **Entitlement race** (webhook delayed, client stale) | Medium | Medium — feature flicker | Entitlement is server-read; client cache 5m but `billing.getEntitlement` refetches on `(app)` focus; webhook upsert is transactional |

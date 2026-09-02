@@ -11,7 +11,6 @@ export const publicEnvSchema = z.object({
   EXPO_PUBLIC_SENTRY_DSN: z.string().optional(),
   EXPO_PUBLIC_UPDATES_URL: z.string().url().optional(),
   EXPO_PUBLIC_AI_MODEL: z.string().optional().default('gpt-4o-mini'),
-  EXPO_PUBLIC_AI_API_KEY: z.string().optional(),
 });
 
 export const privateEnvSchema = z.object({
@@ -36,6 +35,8 @@ export const privateEnvSchema = z.object({
   REVENUECAT_WEBHOOK_SECRET: z.string().optional(),
   POSTHOG_SERVER_KEY: z.string().optional(),
   SENTRY_DSN_SERVER: z.string().optional(),
+  CORS_ALLOWED_ORIGINS: z.string().optional(),
+  ENABLE_DEV_AUTH: z.enum(['true', 'false']).optional(),
   EAS_PROJECT_ID: z.string().optional(),
 });
 
