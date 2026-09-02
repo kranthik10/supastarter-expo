@@ -1,6 +1,6 @@
 # Phase 3 Milestone 3.7 Delivery — Monitoring + Error Observability
 
-**Status:** Locally implemented and validated; remote CI pending checkpoint
+**Status:** Implementation CI-verified; documentation closure pending
 **Baseline:** `064d475`
 **Previous milestone:** Phase 3.6 Analytics
 **Scope boundary:** Monitoring/error observability only. Phase 3.8 Dashboard was not started.
@@ -118,7 +118,9 @@ Documentation:
 
 ## Remote checkpoint
 
-- Implementation commit: pending
+- Implementation commit: `63f859c` — `feat: complete phase 3.7 monitoring`
+- Implementation CI: `33574385234` — completed/success for head `63f859c07d19cd37b9ab594864149e0451fac0c5`
 - Documentation-closure commit: pending
-- GitHub Actions run: pending
+- Documentation-closure CI: pending
+- Final CI documentation update: pending
 - Phase 3.8 Dashboard: not started
