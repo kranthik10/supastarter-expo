@@ -117,6 +117,6 @@
 - No scheduled job deployment, distributed limiter, provider webhook replay store, or production backup setup.
 - No Phase 3.10 Final Audit.
 
-## Checkpoint
-
-Implementation commit and CI evidence will be recorded after the final validation/review checkpoint. Documentation closure may be a separate commit. `.env.development`, build output, logs, and temporary probes remain unstaged.
+- Implementation commit: `593ec0e06c936475038adc1c254f9c2b6010f450` (`chore: complete phase 3.9 production hardening`).
+- Implementation GitHub Actions run: `33675244650` — PASS.
+- Documentation closure is being committed separately after this verified implementation run.

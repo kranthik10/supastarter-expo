@@ -38,9 +38,9 @@ This checklist is intentionally separate from milestone code completion. A green
 
 ## CI VERIFIED
 
-- [ ] This milestone’s implementation commit has a completed successful GitHub Actions run.
+- [x] This milestone’s implementation commit `593ec0e06c936475038adc1c254f9c2b6010f450` has successful GitHub Actions run `33675244650`.
 - [ ] Documentation closure/final-head CI has a completed successful GitHub Actions run.
-- [ ] CI runs `pnpm install --frozen-lockfile`, lint, typecheck, tests, Expo build, and a failing-on-drift `db:generate` comparison.
+- [x] CI runs `pnpm install --frozen-lockfile`, lint, typecheck, tests, Expo build, and a failing-on-drift `db:generate` comparison.
 - [ ] CI secrets/environment are configured in the target repository/environment without printing values.
 
 ## EXTERNAL PROVIDER SETUP REQUIRED
