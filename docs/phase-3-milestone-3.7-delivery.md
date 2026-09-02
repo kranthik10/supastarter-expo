@@ -1,6 +1,6 @@
 # Phase 3 Milestone 3.7 Delivery — Monitoring + Error Observability
 
-**Status:** Implementation CI-verified; documentation closure pending
+**Status:** Documentation closure CI-verified; final head verification pending
 **Baseline:** `064d475`
 **Previous milestone:** Phase 3.6 Analytics
 **Scope boundary:** Monitoring/error observability only. Phase 3.8 Dashboard was not started.
@@ -120,7 +120,7 @@ Documentation:
 
 - Implementation commit: `63f859c` — `feat: complete phase 3.7 monitoring`
 - Implementation CI: `33574385234` — completed/success for head `63f859c07d19cd37b9ab594864149e0451fac0c5`
-- Documentation-closure commit: pending
-- Documentation-closure CI: pending
-- Final CI documentation update: pending
+- Documentation-closure commit: `3bcd0af` — `docs: close phase 3.7 delivery`
+- Documentation-closure CI: `33574691357` — completed/success for head `3bcd0af58a35cf7181a09353ed44698ede70ab69`
+- Final CI documentation update: this commit; its exact head/run are verified separately below
 - Phase 3.8 Dashboard: not started
