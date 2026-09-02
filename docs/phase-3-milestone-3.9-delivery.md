@@ -119,4 +119,5 @@
 
 - Implementation commit: `593ec0e06c936475038adc1c254f9c2b6010f450` (`chore: complete phase 3.9 production hardening`).
 - Implementation GitHub Actions run: `33675244650` — PASS.
-- Documentation closure is being committed separately after this verified implementation run.
+- Documentation closure commit: `503ce8df93a3af08cafb69cf1f1f15a6a835ad8b` (`docs: close phase 3.9 delivery`).
+- Documentation-closure/final-head GitHub Actions run: `33675709349` — PASS.
