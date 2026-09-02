@@ -229,6 +229,33 @@ Home manage billing → /billing → choose plan → local Zustand plan update �
 
 No money is charged and no canonical subscription is changed. Before production billing, the app needs a truthful provider-backed entry point, authenticated server-created checkout/portal session, verified provider event processing, reconciliation, status/error/grace UI, and tests. Those provider operations are outside this audit and remain deferred.
 
+## Universal flow matrix
+
+The classifications below describe the current user-flow implementation, not just the existence of a backend procedure. API or package tests do not count as full UI-flow verification.
+
+| Flow | Classification | Evidence / missing pieces |
+|---|---|---|
+| Logging in | **PARTIAL** | Real Better Auth email/password path, persisted session, and `/home` redirect exist; error mapping, OAuth affordance, demo hint, manual walkthrough, and UI tests are incomplete. |
+| Logging out | **COMPLETE** | Better Auth sign-out, push unregister attempt, local session clear, and root navigation are wired in Settings; no UI/E2E execution was claimed. |
+| Creating account | **PARTIAL** | Real Better Auth signup establishes a session and routes to onboarding; duplicate-account messaging and onboarding mutation loading/error behavior need completion. |
+| Restoring session | **COMPLETE** | Root hydration reads persisted session/token and verifies Better Auth session before rendering routes; no native reload claim. |
+| Editing profile | **PARTIAL** | Settings uses real profile read/update and invalidates the query; dirty/cancel semantics, accessibility, and UI/manual coverage are missing. |
+| Changing password | **COMPLETE** | Settings calls the Better Auth change-password endpoint with current/new password fields and success/error handling; no UI/manual execution. |
+| Deleting account | **COMPLETE** | Confirmation, danger styling, server deletion, local clear, post-delete root navigation, and server sole-owner guard exist; delayed lifecycle remains deferred. |
+| Creating organization | **PARTIAL** | Onboarding and direct create route call the real organization mutation; no mutation loading in onboarding/direct create and duplicate onboarding routes remain. |
+| Switching organization | **MISSING** | Store seams exist, but no user-facing picker calls `setActiveOrg`; server list refresh is not wired on auth transitions. |
+| Inviting teammate | **COMPLETE locally / external email deferred** | Team calls the real invitation mutation, refreshes members/invitations, and exposes role controls; real email delivery remains provider-deferred. |
+| Accepting invitation | **PARTIAL** | Authenticated accept/decline calls are real, but direct/deep-link sign-in handoff can lose the pending invite route. |
+| Viewing notifications | **COMPLETE** | Server list, unread count, cursor Load More, loading, empty, and safe route parsing exist; no UI/E2E execution. |
+| Marking notifications read | **COMPLETE** | Mark-one-on-open and mark-all mutations invalidate notification queries; no pull-to-refresh or retry state. |
+| Subscribing/upgrading | **DEFERRED EXTERNAL PROVIDER** | `/billing` is a local plan preview with a success alert; no purchase occurs. Stripe/RevenueCat checkout, signed webhooks, and reconciliation remain deferred. |
+| Searching | **MISSING** | No user-facing search control or reusable query state exists. |
+| Filtering | **MISSING** | No user-facing filter control or reusable filter state exists. |
+| Sorting | **MISSING** | No user-facing sort control exists; database ordering is not a sorting UI. |
+| Creating resource | **MISSING** | No generic product resource/domain is present; existing organization/invitation forms are the only create examples. |
+| Editing resource | **MISSING** | No generic list → detail → edit resource convention exists. |
+| Deleting resource | **MISSING** | No generic resource delete flow exists; account/member/session/invitation examples are domain-specific. |
+
 ## Generic product UX audit
 
 | Pattern | Current status | Evidence | Reusable today? |
@@ -405,9 +432,9 @@ The audit therefore uses source-level logical flow evidence and automated reposi
 
 - Reset Password.
 - User-facing Organization Switcher.
+- **Storage/files UI:** missing as a surfaced route; only avatar upload currently uses storage.
 - A truthful provider-backed Billing/Upgrade surface once external billing is configured.
 - Optional dedicated Notification Detail if notification payloads require detail beyond safe destination routing.
-- Storage/Files management UI if files are part of the product promise.
 - Shared Permission Denied, Offline/Network Failure, and reusable Error/Retry state surfaces.
 
 ### Missing high-priority flows
