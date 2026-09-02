@@ -1,6 +1,8 @@
 # Phase 3 Milestone 3.8 Delivery — SaaS Dashboard + Product Surface
 
-**Status:** Implemented locally; CI verification pending
+**Status:** COMPLETE
+**Implementation commit:** `2bb27be1dbbfb7026f424cc1d63c50ffc9f91a8b` — `feat: complete phase 3.8 dashboard`
+**Implementation CI:** GitHub Actions run `33645460517` — PASS
 **Baseline:** `7e08812`
 **Scope:** Thin logged-in SaaS dashboard on the existing Home route. Phase 3.9 Production Hardening and Phase 3.10 Final Audit were not started.
 
@@ -127,7 +129,7 @@ Local validation completed:
 - `git diff --check` — PASS;
 - mobile bundle security scan — PASS, 99 exported files and zero forbidden-match groups;
 - real PostgreSQL/tRPC probe `/tmp/phase-3-8-dashboard-check.ts` — PASS for own-org overview, authoritative counts, ready-only storage semantics, cross-org denial, and Org A/B isolation;
-- focused dashboard/API/analytics tests — PASS, 9 tests;
+- focused dashboard/API/analytics tests — PASS, 10 tests;
 - manual browser walkthrough — PARTIAL: local export server was started and the authenticated route was prepared, but Chrome’s remote-debugging permission prompt blocked browser automation. No success was claimed. Native/EAS/Maestro walkthrough remains deferred.
 
 ## Deferred capabilities
@@ -136,4 +138,7 @@ Real billing provider checkout/portal verification, real R2/S3 verification, rea
 
 ## Checkpoint
 
-Implementation commit and GitHub Actions run will be recorded after the final review/push. Working tree must remain clean except intentionally untracked `.env.development`.
+- Implementation commit: `2bb27be1dbbfb7026f424cc1d63c50ffc9f91a8b`.
+- Implementation CI: `33645460517` — completed successfully.
+- Documentation closure follows in a separate documentation-only commit.
+- Working tree must remain clean except intentionally untracked `.env.development`.
