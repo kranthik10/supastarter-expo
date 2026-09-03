@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, Alert, Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
 import { UserPlus, Trash2, RefreshCw } from 'lucide-react-native';
@@ -6,6 +6,11 @@ import { Screen, Card, Text, Input, Button, Avatar, Badge, ListRow } from '@repo
 import { useTheme } from '@/lib/use-theme';
 import { useAuth, validateEmail } from '@repo/auth';
 import { useActiveOrg, useOrgs, type MemberRole } from '@repo/organizations';
+import { matchesSearchQuery, normalizeSearchQuery, sortByField, type SortDirection } from '@/lib/list-policy';
+
+type RoleFilter = 'all' | MemberRole;
+
+const SEARCH_DEBOUNCE_MS = 250;
 
 export default function Team() {
   const theme = useTheme();
@@ -26,6 +31,15 @@ export default function Team() {
   const [role, setRole] = useState<Exclude<MemberRole, 'owner'>>('member');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
+  const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const [roleFilter, setRoleFilter] = useState<RoleFilter>('all');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(normalizeSearchQuery(search)), SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   useEffect(() => {
     if (!org) return;
@@ -33,6 +47,16 @@ export default function Team() {
       // The server remains authoritative; cached members stay visible on refresh failure.
     });
   }, [org?.id, refreshMembers, refreshInvitations]);
+
+  const visibleMembers = useMemo(() => {
+    const members = org?.members ?? [];
+    const filtered = members.filter(
+      (m) =>
+        (roleFilter === 'all' || m.role === roleFilter) &&
+        matchesSearchQuery([m.name, m.email], debouncedSearch),
+    );
+    return sortByField(filtered, (m) => (m.name ?? m.email).toLowerCase(), sortDirection);
+  }, [org?.members, roleFilter, debouncedSearch, sortDirection]);
 
   if (!org) {
     const createDefaultOrg = () => {
@@ -172,7 +196,33 @@ export default function Team() {
       ) : null}
 
       <Card style={styles.members}>
-        {(org.members ?? []).map((m) => (
+        <Input
+          placeholder={t('team.searchMembers')}
+          value={search}
+          onChangeText={setSearch}
+          accessibilityLabel={t('team.searchMembers')}
+        />
+        <View style={styles.filterRow}>
+          {(['all', 'owner', 'admin', 'member'] as const).map((f) => (
+            <Button
+              key={f}
+              label={f === 'all' ? t('team.filterAll') : roleLabel(f)}
+              size="md"
+              variant={roleFilter === f ? 'primary' : 'secondary'}
+              onPress={() => setRoleFilter(f)}
+            />
+          ))}
+          <Button
+            label={sortDirection === 'asc' ? t('team.sortAZ') : t('team.sortZA')}
+            size="md"
+            variant="ghost"
+            onPress={() => setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))}
+          />
+        </View>
+        {visibleMembers.length === 0 ? (
+          <Text variant="small" muted>{t('team.noMatchingMembers')}</Text>
+        ) : null}
+        {visibleMembers.map((m) => (
           <ListRow
             key={m.userId}
             leading={<Avatar name={displayName(m.name, m.email)} image={m.image ?? undefined} />}
@@ -240,6 +290,7 @@ const styles = StyleSheet.create({
   card: { gap: 4 },
   rolePicker: { flexDirection: 'row', gap: 10, marginVertical: 8 },
   members: { marginTop: 12 },
+  filterRow: { flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginVertical: 8 },
   pending: { marginTop: 12, gap: 4 },
   trailing: { flexDirection: 'row', alignItems: 'center', gap: 8, flexWrap: 'wrap', justifyContent: 'flex-end' },
 });

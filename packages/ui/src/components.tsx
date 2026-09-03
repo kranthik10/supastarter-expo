@@ -7,6 +7,7 @@ import {
   Text as RNText,
   TextInput,
   TextInputProps,
+  RefreshControlProps,
   TextStyle,
   View,
   ViewStyle,
@@ -50,11 +51,14 @@ export function Screen({
   scroll = true,
   padded = true,
   style,
+  refreshControl,
 }: {
   children: React.ReactNode;
   scroll?: boolean;
   padded?: boolean;
   style?: StyleProp<ViewStyle>;
+  /** Pull-to-refresh control for the scroll path; ignored when scroll={false}. */
+  refreshControl?: React.ReactElement<RefreshControlProps>;
 }) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
@@ -66,7 +70,11 @@ export function Screen({
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         {scroll ? (
-          <ScrollView contentContainerStyle={[padded && styles.padded, styles.grow]} keyboardShouldPersistTaps="handled">
+          <ScrollView
+            contentContainerStyle={[padded && styles.padded, styles.grow]}
+            keyboardShouldPersistTaps="handled"
+            refreshControl={refreshControl}
+          >
             {children}
           </ScrollView>
         ) : (

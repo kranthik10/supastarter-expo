@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { Alert, RefreshControl, StyleSheet } from 'react-native';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { Bell } from 'lucide-react-native';
@@ -9,6 +9,7 @@ import { useAuth } from '@repo/auth';
 import { parseNotificationData, type NotificationCategory } from '@repo/notifications/policy';
 import { analytics } from '@repo/analytics';
 import { useTheme } from '@/lib/use-theme';
+import { flattenPages } from '@/lib/list-policy';
 import { useTranslation } from 'react-i18next';
 
 type NotificationItem = {
@@ -61,7 +62,7 @@ export default function Notifications() {
     },
   });
 
-  const items = (listQuery.data?.pages.flatMap((page) => page.items) ?? []) as NotificationItem[];
+  const items = flattenPages(listQuery.data?.pages ?? []) as NotificationItem[];
   const openNotification = (item: NotificationItem) => {
     const data = parseNotificationData(item.data);
     analytics.capture('notification_opened', { category: item.category, ...(item.organizationId ? { organization_id: item.organizationId } : {}) });
@@ -77,7 +78,14 @@ export default function Notifications() {
   };
 
   return (
-    <Screen>
+    <Screen
+      refreshControl={
+        <RefreshControl
+          refreshing={listQuery.isRefetching && !listQuery.isFetchingNextPage}
+          onRefresh={() => void listQuery.refetch()}
+        />
+      }
+    >
       <Text variant="h1">{t('notifications.title')}</Text>
       <Text variant="body" muted>{t('notifications.unread', { count: unreadQuery.data?.count ?? 0 })}</Text>
       <Button

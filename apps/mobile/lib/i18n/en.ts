@@ -171,6 +171,11 @@ const en = {
     refresh: 'Refresh',
     cannotRemoveOwner: 'The owner cannot be removed',
     createOrg: 'New organization',
+    searchMembers: 'Search members',
+    noMatchingMembers: 'No members match your search.',
+    filterAll: 'All',
+    sortAZ: 'A–Z',
+    sortZA: 'Z–A',
   },
   billing: {
     title: 'Billing',

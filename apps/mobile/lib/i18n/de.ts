@@ -174,6 +174,11 @@ const de: typeof en = {
     refresh: 'Aktualisieren',
     cannotRemoveOwner: 'Der Inhaber kann nicht entfernt werden',
     createOrg: 'Neue Organisation',
+    searchMembers: 'Mitglieder suchen',
+    noMatchingMembers: 'Keine Mitglieder für diese Suche.',
+    filterAll: 'Alle',
+    sortAZ: 'A–Z',
+    sortZA: 'Z–A',
   },
   billing: {
     title: 'Billing',
