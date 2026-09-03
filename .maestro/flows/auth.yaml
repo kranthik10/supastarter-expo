@@ -2,13 +2,14 @@ appId: com.mobilesaas.app.dev
 ---
 - launchApp:
     clearState: true
+- tapOn: "Learn more"
+- assertVisible: "Welcome back!"
+- tapOn: "Email"
+- inputText: "user@example.com"
+- tapOn: "Password"
+- inputText: "s3cure-password"
 - tapOn: "Sign in"
-- inputText: "demo@example.com"
-- tapOn: "Continue"
 - assertVisible: "Home"
-
 - tapOn: "Settings"
 - tapOn: "Sign out"
-- assertVisible: "Sign in"
-- assertVisible: "Protected route"
-
+- assertVisible: "Welcome back!"

@@ -1,7 +1,7 @@
 appId: com.mobilesaas.app.dev
 ---
+# Cold launch while signed out must land on public entry, never app tabs.
 - launchApp:
     clearState: true
-- tapOn: "Home"
-- assertVisible: "Sign in"
-
+- assertVisible: "Start for free"
+- assertNotVisible: "Settings"

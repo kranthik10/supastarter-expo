@@ -3,9 +3,7 @@ appId: com.mobilesaas.app.dev
 - launchApp:
     clearState: true
 - openLink: "mobile-saas-dev://invite/ABC123"
-- assertVisible: "Sign in"
-# After auth, invite should resolve
-- inputText: "demo@example.com"
-- tapOn: "Continue"
-- assertVisible: "Invite"
-
+- assertVisible: "Organization invitation"
+# Logged out: invite stores a pending link and routes to sign-in.
+- tapOn: "Sign in"
+- assertVisible: "Welcome back!"

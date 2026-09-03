@@ -2,6 +2,5 @@ appId: com.mobilesaas.app.dev
 ---
 - launchApp:
     clearState: true
-- assertVisible: "Sign in"
-- assertVisible: "Welcome"
-
+- assertVisible: "Start for free"
+- assertVisible: "Learn more"

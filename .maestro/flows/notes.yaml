@@ -1,0 +1,20 @@
+appId: com.mobilesaas.app.dev
+---
+# Notes reference CRUD: list -> create -> detail -> delete.
+# Requires an authenticated session with an organization (run after auth.yaml).
+- launchApp:
+    clearState: false
+- tapOn: "Notes"
+- assertVisible: "Search notes"
+- tapOn: "New note"
+- tapOn: "Title"
+- inputText: "Maestro Note"
+- tapOn: "Body (optional)"
+- inputText: "Created by the authored Maestro flow."
+- tapOn: "Create note"
+- assertVisible: "Maestro Note"
+- tapOn: "Delete note"
+- tapOn:
+    text: "Delete note"
+    index: 1
+- assertVisible: "Notes"
