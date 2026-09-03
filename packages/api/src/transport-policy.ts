@@ -11,6 +11,25 @@ export function containsUnauthorizedTRPCError(status: number, body: unknown): bo
   return status === 401 || hasUnauthorizedError(body);
 }
 
+function hasForbiddenError(value: unknown, depth = 0): boolean {
+  if (depth > 6 || value === null || typeof value !== 'object') return false;
+  if (Array.isArray(value)) return value.some((entry) => hasForbiddenError(entry, depth + 1));
+
+  const record = value as Record<string, unknown>;
+  if (record.code === 'FORBIDDEN') return true;
+  return ['error', 'shape', 'data', 'json'].some((key) => hasForbiddenError(record[key], depth + 1));
+}
+
+/**
+ * Detects a permission-denied (FORBIDDEN) client error. Unlike
+ * UNAUTHORIZED, this never triggers session termination — retrying with
+ * the same credentials cannot succeed, so callers render a permission
+ * state instead of a retry state.
+ */
+export function isForbiddenError(error: unknown): boolean {
+  return hasForbiddenError(error);
+}
+
 export type UnauthorizedContext = {
   /** Exact Authorization header the failed request carried, or null when absent. */
   authorization: string | null;

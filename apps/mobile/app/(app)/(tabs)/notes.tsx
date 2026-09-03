@@ -3,11 +3,12 @@ import { Alert, RefreshControl, StyleSheet } from 'react-native';
 import { useInfiniteQuery } from '@tanstack/react-query';
 import { useRouter } from 'expo-router';
 import { NotebookPen, Plus } from 'lucide-react-native';
-import { Button, Card, Input, ListRow, Screen, Text } from '@repo/ui';
+import { Button, Card, EmptyState, ErrorState, Input, ListRow, LoadingState, PermissionState, Screen, Text } from '@repo/ui';
 import { trpc } from '@repo/api';
 import { useAuth } from '@repo/auth';
 import { useActiveOrg } from '@repo/organizations';
 import { useTheme } from '@/lib/use-theme';
+import { resolveQueryState } from '@/lib/query-state';
 import { flattenPages, matchesSearchQuery, normalizeSearchQuery, sortByField } from '@/lib/list-policy';
 import { useTranslation } from 'react-i18next';
 
@@ -58,6 +59,13 @@ export default function Notes() {
   const items =
     sort === 'newest' ? searched : sortByField(searched, (note) => new Date(note.createdAt).getTime(), 'asc');
 
+  const state = resolveQueryState({
+    isPending: listQuery.isPending,
+    isError: !!listQuery.error,
+    error: listQuery.error,
+    isEmpty: loaded.length === 0,
+  });
+
   const showError = () => {
     Alert.alert(t('notes.error'));
   };
@@ -101,23 +109,23 @@ export default function Notes() {
         variant="ghost"
         onPress={() => setSort((s) => (s === 'newest' ? 'oldest' : 'newest'))}
       />
-      {listQuery.isLoading ? <Text variant="body" muted>{t('common.loading')}</Text> : null}
-      {listQuery.error ? (
-        <Card style={styles.empty}>
-          <Text variant="body" color={theme.danger}>{t('notes.error')}</Text>
-          <Button label={t('home.refresh')} size="md" variant="secondary" onPress={() => void listQuery.refetch().catch(showError)} />
-        </Card>
+      {state === 'loading' ? <LoadingState message={t('common.loading')} /> : null}
+      {state === 'permission' ? <PermissionState message={t('common.permissionDenied')} /> : null}
+      {state === 'error' ? (
+        <ErrorState
+          message={t('notes.error')}
+          retryLabel={t('common.retry')}
+          onRetry={() => void listQuery.refetch().catch(showError)}
+        />
       ) : null}
-      {!listQuery.isLoading && !listQuery.error && loaded.length === 0 ? (
-        <Card style={styles.empty}>
-          <NotebookPen color={theme.textMuted} size={28} />
-          <Text variant="body" muted>{t('notes.noNotes')}</Text>
-        </Card>
+      {state === 'empty' ? (
+        <EmptyState
+          icon={<NotebookPen color={theme.textMuted} size={28} />}
+          message={t('notes.noNotes')}
+        />
       ) : null}
-      {!listQuery.isLoading && !listQuery.error && loaded.length > 0 && items.length === 0 ? (
-        <Card style={styles.empty}>
-          <Text variant="body" muted>{t('notes.noMatchingNotes')}</Text>
-        </Card>
+      {state === 'content' && items.length === 0 ? (
+        <EmptyState message={t('notes.noMatchingNotes')} />
       ) : null}
       {items.map((note) => (
         <Card key={note.id} style={styles.item} onPress={() => router.push(`/notes/${note.id}`)}>

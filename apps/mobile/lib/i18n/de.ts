@@ -17,6 +17,8 @@ const de: typeof en = {
     cancel: 'Abbrechen',
     or: 'oder',
     loading: 'Wird geladen…',
+    retry: 'Erneut versuchen',
+    permissionDenied: 'Kein Zugriff. Bitte einen Workspace-Eigentümer um Hilfe.',
     learnMore: 'Mehr erfahren',
   },
   marketing: {

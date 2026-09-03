@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   ActivityIndicator,
+  Image,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -264,8 +265,6 @@ export function Avatar({
   );
 }
 
-import { Image } from 'react-native';
-
 /* ---------- Badge ---------- */
 
 export function Badge({ label, tone = 'brand' }: { label: string; tone?: 'brand' | 'success' | 'muted' | 'amber' }) {
@@ -357,6 +356,70 @@ export function ListRow({
   );
 }
 
+/* ---------- Shared query states ---------- */
+
+function StateShell({
+  icon,
+  message,
+  messageColor,
+  action,
+}: {
+  icon?: React.ReactNode;
+  message: string;
+  messageColor?: string;
+  action?: React.ReactNode;
+}) {
+  return (
+    <Card style={styles.stateCard}>
+      {icon}
+      <Text variant="body" muted={!messageColor} color={messageColor} align="center">
+        {message}
+      </Text>
+      {action}
+    </Card>
+  );
+}
+
+export function LoadingState({ message }: { message: string }) {
+  const theme = useTheme();
+  return (
+    <Card style={styles.stateCard}>
+      <ActivityIndicator color={theme.textMuted} />
+      <Text variant="body" muted align="center">
+        {message}
+      </Text>
+    </Card>
+  );
+}
+
+export function EmptyState({ icon, message }: { icon?: React.ReactNode; message: string }) {
+  return <StateShell icon={icon} message={message} />;
+}
+
+export function ErrorState({
+  message,
+  retryLabel,
+  onRetry,
+}: {
+  message: string;
+  retryLabel: string;
+  onRetry: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <StateShell
+      message={message}
+      messageColor={theme.danger}
+      action={<Button label={retryLabel} size="md" variant="secondary" onPress={onRetry} />}
+    />
+  );
+}
+
+export function PermissionState({ message }: { message: string }) {
+  const theme = useTheme();
+  return <StateShell icon={undefined} message={message} messageColor={theme.textMuted} />;
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   flex: { flex: 1 },
@@ -377,6 +440,11 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     padding: 16,
     gap: 4,
+  },
+  stateCard: {
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 24,
   },
   inputWrap: { marginBottom: 14 },
   input: {

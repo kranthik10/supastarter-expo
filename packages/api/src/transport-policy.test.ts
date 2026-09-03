@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { containsUnauthorizedTRPCError, createSessionAwareFetch } from './transport-policy';
+import { containsUnauthorizedTRPCError, createSessionAwareFetch, isForbiddenError } from './transport-policy';
 
 describe('tRPC authentication transport policy', () => {
   it('detects a genuine unauthorized response including batched payloads', () => {
@@ -19,6 +19,15 @@ describe('tRPC authentication transport policy', () => {
     expect(containsUnauthorizedTRPCError(500, { error: { data: { code: 'INTERNAL_SERVER_ERROR' } } })).toBe(false);
     expect(containsUnauthorizedTRPCError(200, { result: { data: { code: 'UNAUTHORIZED' } } })).toBe(false);
     expect(containsUnauthorizedTRPCError(0, null)).toBe(false);
+  });
+
+  it('detects forbidden errors without matching other failure shapes', () => {
+    expect(isForbiddenError({ data: { code: 'FORBIDDEN' } })).toBe(true);
+    expect(isForbiddenError({ shape: { data: { code: 'FORBIDDEN' } } })).toBe(true);
+    expect(isForbiddenError({ data: { code: 'NOT_FOUND' } })).toBe(false);
+    expect(isForbiddenError({ data: { code: 'UNAUTHORIZED' } })).toBe(false);
+    expect(isForbiddenError(new Error('boom'))).toBe(false);
+    expect(isForbiddenError(null)).toBe(false);
   });
 
   it('notifies once after a parsed unauthorized transport response and returns the original response', async () => {

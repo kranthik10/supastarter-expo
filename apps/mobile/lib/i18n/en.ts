@@ -15,6 +15,8 @@ const en = {
     cancel: 'Cancel',
     or: 'or',
     loading: 'Loading…',
+    retry: 'Retry',
+    permissionDenied: 'You do not have access. Ask a workspace owner for help.',
     learnMore: 'Learn more',
   },
   marketing: {
