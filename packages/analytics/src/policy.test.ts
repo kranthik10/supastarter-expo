@@ -27,6 +27,18 @@ describe('analytics policy', () => {
     expect(sanitizeAnalyticsProperties('user_signed_in', { method: 'password', extra: 'not-declared' })).toBeNull();
   });
 
+  it('catalogs note lifecycle events with organization context only', () => {
+    expect(analyticsEventNames).toContain('note_created');
+    expect(analyticsEventNames).toContain('note_updated');
+    expect(analyticsEventNames).toContain('note_deleted');
+    expect(sanitizeAnalyticsProperties('note_created', { organization_id: 'org-1' })).toEqual({ organization_id: 'org-1' });
+  });
+
+  it('never allows note content into analytics properties', () => {
+    expect(sanitizeAnalyticsProperties('note_created', { organization_id: 'org-1', title: 'private' })).toBeNull();
+    expect(sanitizeAnalyticsProperties('note_updated', { organization_id: 'org-1', body: 'private' })).toBeNull();
+  });
+
   it('strips raw identity fields from identify traits', () => {
     expect(sanitizeIdentifyTraits({ locale: 'en', theme: 'dark', email: 'user@example.com', name: 'User' })).toEqual({ locale: 'en', theme: 'dark' });
   });

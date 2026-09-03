@@ -1,7 +1,7 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Home, Users, CreditCard, Settings, Bell } from 'lucide-react-native';
+import { Home, Users, CreditCard, Settings, Bell, NotebookPen } from 'lucide-react-native';
 import { useTheme } from '@/lib/use-theme';
 
 export default function TabsLayout() {
@@ -35,6 +35,10 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="notifications"
         options={{ title: t('tabs.notifications'), tabBarIcon: ({ color, size }) => <Bell color={color} size={size} /> }}
+      />
+      <Tabs.Screen
+        name="notes"
+        options={{ title: t('tabs.notes'), tabBarIcon: ({ color, size }) => <NotebookPen color={color} size={size} /> }}
       />
       <Tabs.Screen
         name="settings"

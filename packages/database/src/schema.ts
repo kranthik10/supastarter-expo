@@ -280,6 +280,24 @@ export const auditLogs = pgTable(
   (t) => [index('audit_org_idx').on(t.organizationId), index('audit_user_idx').on(t.userId)]
 );
 
+export const notes = pgTable(
+  'notes',
+  {
+    id: text('id').primaryKey(),
+    organizationId: text('organization_id')
+      .notNull()
+      .references(() => organizations.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    title: text('title').notNull(),
+    body: text('body'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('notes_org_idx').on(t.organizationId), index('notes_user_idx').on(t.userId)]
+);
+
 export const usersRelations = relations(users, ({ many, one }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
@@ -293,6 +311,7 @@ export const organizationsRelations = relations(organizations, ({ many }) => ({
   members: many(organizationMembers),
   subscriptions: many(subscriptions),
   invitations: many(invitations),
+  notes: many(notes),
 }));
 
 export const organizationMembersRelations = relations(organizationMembers, ({ one }) => ({

@@ -90,6 +90,20 @@ describe('RBAC - Role Permissions', () => {
     expect(can('member', 'billing.read')).toBe(true);
   });
 
+  it('every role can read and write notes', () => {
+    for (const role of ['owner', 'admin', 'member'] as const) {
+      expect(can(role, 'notes.read')).toBe(true);
+      expect(can(role, 'notes.write')).toBe(true);
+    }
+  });
+
+  it('only owner and admin can delete notes', () => {
+    expect(can('owner', 'notes.delete')).toBe(true);
+    expect(can('admin', 'notes.delete')).toBe(true);
+    expect(can('member', 'notes.delete')).toBe(false);
+    expect(() => assertCan('member', 'notes.delete')).toThrow(/Forbidden/);
+  });
+
   it('assertCan throws with Forbidden code', () => {
     try {
       assertCan('member', 'organization.delete');

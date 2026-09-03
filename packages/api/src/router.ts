@@ -3,7 +3,7 @@ import { z } from 'zod';
 import superjson from 'superjson';
 import type { ApiContext } from './context';
 import { getDb } from '@repo/database';
-import { auditLogs, devices, files, invitations, organizations, organizationMembers, pushTokens, sessions, subscriptions, userPreferences, users, notifications as notificationRows } from '@repo/database';
+import { auditLogs, devices, files, invitations, notes as noteRows, organizations, organizationMembers, pushTokens, sessions, subscriptions, userPreferences, users, notifications as notificationRows } from '@repo/database';
 import { and, desc, eq, isNull, lte, lt, ne, or, sql } from 'drizzle-orm';
 import { createId } from '@paralleldrive/cuid2';
 import { assertCan } from '@repo/permissions';
@@ -157,6 +157,60 @@ function publicNotification(row: typeof notificationRows.$inferSelect) {
     readAt: row.readAt,
     createdAt: row.createdAt,
   };
+}
+
+const noteListSchema = z
+  .object({
+    organizationId: idSchema,
+    limit: z.number().int().min(1).max(100).default(20),
+    cursor: z.string().trim().min(1).max(128).optional(),
+  })
+  .strict();
+const noteIdSchema = z.object({ organizationId: idSchema, noteId: idSchema }).strict();
+const noteTitleSchema = z.string().trim().min(1).max(120);
+const noteBodySchema = z.string().trim().max(4000).optional();
+const noteCursorIdPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
+
+function encodeNoteCursor(input: { id: string; createdAt: Date }): string {
+  return encodeURIComponent(`${input.createdAt.toISOString()}|${input.id}`);
+}
+
+function decodeNoteCursor(value: string): { id: string; createdAt: string } | null {
+  try {
+    const decoded = decodeURIComponent(value);
+    const separator = decoded.lastIndexOf('|');
+    if (separator <= 0 || separator === decoded.length - 1) return null;
+    const createdAt = decoded.slice(0, separator);
+    const id = decoded.slice(separator + 1);
+    const parsed = new Date(createdAt);
+    if (!noteCursorIdPattern.test(id) || Number.isNaN(parsed.getTime()) || parsed.toISOString() !== createdAt) return null;
+    return { id, createdAt };
+  } catch {
+    return null;
+  }
+}
+
+function publicNote(row: typeof noteRows.$inferSelect) {
+  return {
+    id: row.id,
+    organizationId: row.organizationId,
+    userId: row.userId,
+    title: row.title,
+    body: row.body,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+async function requireNoteActor(db: any, organizationId: string, userId: string, permission: Parameters<typeof assertCan>[1]) {
+  const [actor] = await db
+    .select()
+    .from(organizationMembers)
+    .where(and(eq(organizationMembers.organizationId, organizationId), eq(organizationMembers.userId, userId)))
+    .limit(1);
+  if (!actor) throw new TRPCError({ code: 'FORBIDDEN', message: 'organization_forbidden' });
+  requirePermission(actor.role as MemberRole, permission);
+  return actor;
 }
 
 function toPublicPreferences(row: any): UserPreferences {
@@ -955,6 +1009,103 @@ export const appRouter = router({
         .where(and(eq(notificationRows.userId, ctx.user!.id), isNull(notificationRows.readAt)))
         .returning({ id: notificationRows.id });
       return { ok: true as const, updatedCount: updated.length };
+    }),
+  }),
+
+  notes: router({
+    list: protectedProcedure.input(noteListSchema).query(async ({ ctx, input }) => {
+      const db = ctx.db ?? getDb();
+      await requireNoteActor(db, input.organizationId, ctx.user!.id, 'notes.read');
+      const cursor = input.cursor ? decodeNoteCursor(input.cursor) : null;
+      if (input.cursor && !cursor) throw new TRPCError({ code: 'BAD_REQUEST', message: 'note_cursor_invalid' });
+      const conditions = [eq(noteRows.organizationId, input.organizationId)];
+      if (cursor) {
+        const cursorDate = new Date(cursor.createdAt);
+        conditions.push(or(lt(noteRows.createdAt, cursorDate), and(eq(noteRows.createdAt, cursorDate), lt(noteRows.id, cursor.id)))!);
+      }
+      const rows = await db
+        .select()
+        .from(noteRows)
+        .where(and(...conditions))
+        .orderBy(desc(noteRows.createdAt), desc(noteRows.id))
+        .limit(input.limit + 1);
+      const hasMore = rows.length > input.limit;
+      const page = hasMore ? rows.slice(0, input.limit) : rows;
+      const last = page[page.length - 1];
+      return {
+        items: page.map(publicNote),
+        nextCursor: hasMore && last ? encodeNoteCursor({ id: last.id, createdAt: last.createdAt }) : null,
+      };
+    }),
+
+    get: protectedProcedure.input(noteIdSchema).query(async ({ ctx, input }) => {
+      const db = ctx.db ?? getDb();
+      await requireNoteActor(db, input.organizationId, ctx.user!.id, 'notes.read');
+      const [row] = await db
+        .select()
+        .from(noteRows)
+        .where(and(eq(noteRows.id, input.noteId), eq(noteRows.organizationId, input.organizationId)))
+        .limit(1);
+      if (!row) throw new TRPCError({ code: 'NOT_FOUND', message: 'note_not_found' });
+      return { note: publicNote(row) };
+    }),
+
+    create: protectedProcedure
+      .input(z.object({ organizationId: idSchema, title: noteTitleSchema, body: noteBodySchema }).strict())
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        await requireNoteActor(db, input.organizationId, ctx.user!.id, 'notes.write');
+        const [row] = await db
+          .insert(noteRows)
+          .values({
+            id: createId(),
+            organizationId: input.organizationId,
+            userId: ctx.user!.id,
+            title: input.title,
+            body: input.body ?? null,
+          })
+          .returning();
+        captureServerEvent(serverAnalyticsProvider, 'note_created', { organization_id: input.organizationId });
+        return { note: publicNote(row) };
+      }),
+
+    update: protectedProcedure
+      .input(
+        z
+          .object({ organizationId: idSchema, noteId: idSchema, title: noteTitleSchema.optional(), body: noteBodySchema })
+          .strict()
+      )
+      .mutation(async ({ ctx, input }) => {
+        const db = ctx.db ?? getDb();
+        await requireNoteActor(db, input.organizationId, ctx.user!.id, 'notes.write');
+        const [existing] = await db
+          .select({ id: noteRows.id })
+          .from(noteRows)
+          .where(and(eq(noteRows.id, input.noteId), eq(noteRows.organizationId, input.organizationId)))
+          .limit(1);
+        if (!existing) throw new TRPCError({ code: 'NOT_FOUND', message: 'note_not_found' });
+        const patch: { title?: string; body?: string | null; updatedAt: Date } = { updatedAt: new Date() };
+        if (input.title !== undefined) patch.title = input.title;
+        if (input.body !== undefined) patch.body = input.body ? input.body : null;
+        const [row] = await db
+          .update(noteRows)
+          .set(patch)
+          .where(and(eq(noteRows.id, input.noteId), eq(noteRows.organizationId, input.organizationId)))
+          .returning();
+        captureServerEvent(serverAnalyticsProvider, 'note_updated', { organization_id: input.organizationId });
+        return { note: publicNote(row) };
+      }),
+
+    delete: protectedProcedure.input(noteIdSchema).mutation(async ({ ctx, input }) => {
+      const db = ctx.db ?? getDb();
+      await requireNoteActor(db, input.organizationId, ctx.user!.id, 'notes.delete');
+      const deleted = await db
+        .delete(noteRows)
+        .where(and(eq(noteRows.id, input.noteId), eq(noteRows.organizationId, input.organizationId)))
+        .returning({ id: noteRows.id });
+      if (deleted.length === 0) throw new TRPCError({ code: 'NOT_FOUND', message: 'note_not_found' });
+      captureServerEvent(serverAnalyticsProvider, 'note_deleted', { organization_id: input.organizationId });
+      return { ok: true as const };
     }),
   }),
 

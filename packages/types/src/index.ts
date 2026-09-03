@@ -11,7 +11,10 @@ export type Permission =
   | 'billing.read'
   | 'billing.manage'
   | 'files.write'
-  | 'files.delete';
+  | 'files.delete'
+  | 'notes.read'
+  | 'notes.write'
+  | 'notes.delete';
 
 export type User = {
   id: string;

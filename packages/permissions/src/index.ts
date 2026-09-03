@@ -13,6 +13,9 @@ export const rolePermissions: Record<MemberRole, Permission[]> = {
     'billing.manage',
     'files.write',
     'files.delete',
+    'notes.read',
+    'notes.write',
+    'notes.delete',
   ],
   admin: [
     'organization.read',
@@ -23,12 +26,17 @@ export const rolePermissions: Record<MemberRole, Permission[]> = {
     'billing.read',
     'files.write',
     'files.delete',
+    'notes.read',
+    'notes.write',
+    'notes.delete',
   ],
   member: [
     'organization.read',
     'members.read',
     'billing.read',
     'files.write',
+    'notes.read',
+    'notes.write',
   ],
 };
 
@@ -56,4 +64,7 @@ export const permissions: Permission[] = [
   'billing.manage',
   'files.write',
   'files.delete',
+  'notes.read',
+  'notes.write',
+  'notes.delete',
 ];

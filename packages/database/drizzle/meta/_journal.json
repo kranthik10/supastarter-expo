@@ -57,6 +57,13 @@
       "when": 1788368137343,
       "tag": "0007_workable_frightful_four",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1788459974837,
+      "tag": "0008_salty_spyke",
+      "breakpoints": true
     }
   ]
 }

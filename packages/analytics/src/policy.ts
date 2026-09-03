@@ -18,6 +18,9 @@ export const analyticsEventNames = [
   'checkout_requested',
   'dashboard_viewed',
   'dashboard_quick_action_selected',
+  'note_created',
+  'note_updated',
+  'note_deleted',
 ] as const;
 
 export type AnalyticsEventName = (typeof analyticsEventNames)[number];
@@ -44,6 +47,9 @@ export type AnalyticsEventProperties = {
   checkout_requested: { plan: 'free' | 'pro' | 'enterprise'; organization_id?: string };
   dashboard_viewed: { organization_id: string };
   dashboard_quick_action_selected: { action: 'invite_member' | 'manage_billing' | 'team' | 'notifications' | 'settings' };
+  note_created: { organization_id: string };
+  note_updated: { organization_id: string };
+  note_deleted: { organization_id: string };
 };
 
 export type ScreenName =
@@ -57,9 +63,10 @@ export type ScreenName =
   | 'auth'
   | 'onboarding'
   | 'assistant'
+  | 'notes'
   | 'unknown';
 
-export const screenNames = ['home', 'team', 'billing', 'settings', 'notifications', 'organization', 'invite', 'auth', 'onboarding', 'assistant', 'unknown'] as const;
+export const screenNames = ['home', 'team', 'billing', 'settings', 'notifications', 'organization', 'invite', 'auth', 'onboarding', 'assistant', 'notes', 'unknown'] as const;
 
 const eventPropertyKeys: Record<AnalyticsEventName, readonly string[]> = {
   user_signed_in: ['method'],
@@ -81,6 +88,9 @@ const eventPropertyKeys: Record<AnalyticsEventName, readonly string[]> = {
   checkout_requested: ['plan', 'organization_id'],
   dashboard_viewed: ['organization_id'],
   dashboard_quick_action_selected: ['action'],
+  note_created: ['organization_id'],
+  note_updated: ['organization_id'],
+  note_deleted: ['organization_id'],
 };
 
 const forbiddenPropertyKeys = new Set([
@@ -154,7 +164,7 @@ export function screenNameForPath(path: string): ScreenName {
   if (!first) return 'unknown';
   if (first === 'invite') return 'invite';
   if (first === 'organization') return 'organization';
-  if (['home', 'team', 'billing', 'settings', 'notifications', 'assistant'].includes(first)) return first as ScreenName;
+  if (['home', 'team', 'billing', 'settings', 'notifications', 'assistant', 'notes'].includes(first)) return first as ScreenName;
   if (['sign-in', 'sign-up', 'forgot-password', 'verify-email'].includes(first)) return 'auth';
   if (['onboarding', 'welcome', 'create-organization'].includes(first)) return 'onboarding';
   return 'unknown';
