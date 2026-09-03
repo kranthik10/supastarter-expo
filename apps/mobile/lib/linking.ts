@@ -28,6 +28,10 @@ export async function consumePendingLink(): Promise<string | null> {
   return raw ? normalizeSafeInternalRoute(raw) : null;
 }
 
+export async function clearPendingLink(): Promise<void> {
+  await secureStorage.remove(PENDING_LINK_KEY);
+}
+
 export function useDeepLinks() {
   useEffect(() => {
     let mounted = true;

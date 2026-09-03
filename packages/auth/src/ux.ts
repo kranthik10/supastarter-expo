@@ -1,6 +1,8 @@
 export type AuthUxErrorCode =
   | 'invalid_email'
   | 'password_required'
+  | 'current_password_required'
+  | 'current_password_incorrect'
   | 'password_too_short'
   | 'password_mismatch'
   | 'name_required'
@@ -11,6 +13,8 @@ export type AuthUxErrorCode =
   | 'rate_limited'
   | 'network'
   | 'server';
+
+export type AuthUxOperation = 'sign-in' | 'sign-up' | 'change-password' | 'reset-password';
 
 type ValidationResult<T> = { ok: true; value: T } | { ok: false; code: AuthUxErrorCode };
 
@@ -47,6 +51,21 @@ export function validateSignUpInput(
   return { ok: true, value: { name: normalizedName, email: normalizedEmail, password } };
 }
 
+export function validateProfileNameInput(name: string): ValidationResult<{ name: string }> {
+  const normalizedName = name.trim();
+  if (!normalizedName) return { ok: false, code: 'name_required' };
+  return { ok: true, value: { name: normalizedName } };
+}
+
+export function validateChangePasswordInput(
+  currentPassword: string,
+  newPassword: string
+): ValidationResult<{ currentPassword: string; newPassword: string }> {
+  if (!currentPassword) return { ok: false, code: 'current_password_required' };
+  if (newPassword.length < MIN_PASSWORD_LENGTH) return { ok: false, code: 'password_too_short' };
+  return { ok: true, value: { currentPassword, newPassword } };
+}
+
 export function validateResetPasswordInput(
   token: string,
   password: string,
@@ -62,6 +81,8 @@ export function validateResetPasswordInput(
 const AUTH_ERROR_MESSAGE_KEYS: Record<AuthUxErrorCode, string> = {
   invalid_email: 'auth.invalidEmail',
   password_required: 'auth.passwordRequired',
+  current_password_required: 'auth.currentPasswordRequired',
+  current_password_incorrect: 'auth.currentPasswordIncorrect',
   password_too_short: 'auth.shortPassword',
   password_mismatch: 'auth.passwordMismatch',
   name_required: 'auth.nameRequired',
@@ -78,15 +99,41 @@ export function authErrorMessageKey(code: AuthUxErrorCode): string {
   return AUTH_ERROR_MESSAGE_KEYS[code];
 }
 
-export function classifyAuthError(error: unknown): AuthUxErrorCode {
+/**
+ * Resolves any account-screen failure to a finite localized message key.
+ * Authentication-shaped failures (AuthActionError, validation codes, network
+ * TypeErrors, status-carrying errors) resolve to auth keys. All other failures
+ * resolve to the caller-provided generic fallback so raw backend, database,
+ * and transport text is never rendered.
+ */
+export function resolveErrorMessageKey(
+  error: unknown,
+  operation?: AuthUxOperation,
+  fallbackKey = 'auth.serverError'
+): string {
+  if (error instanceof AuthActionError || error instanceof TypeError) {
+    return authErrorMessageKey(classifyAuthError(error, operation));
+  }
+  const record = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : null;
+  if (record && (typeof record.code === 'string' || typeof record.status === 'number')) {
+    return authErrorMessageKey(classifyAuthError(error, operation));
+  }
+  return fallbackKey;
+}
+
+export function classifyAuthError(error: unknown, operation?: AuthUxOperation): AuthUxErrorCode {
   if (error instanceof TypeError) return 'network';
 
   const record = typeof error === 'object' && error !== null ? (error as Record<string, unknown>) : null;
   const status = typeof record?.status === 'number' ? record.status : undefined;
   const rawCode = error instanceof AuthActionError ? error.code : typeof record?.code === 'string' ? record.code : '';
+  // Client-side validation codes are already finite user-facing codes; pass them through untouched.
+  // Object.hasOwn (not `in`) so prototype-chain names can never slip through as UX codes.
+  if (Object.hasOwn(AUTH_ERROR_MESSAGE_KEYS, rawCode)) return rawCode as AuthUxErrorCode;
   const code = rawCode.toUpperCase();
 
   if (status === 429 || code.includes('TOO_MANY')) return 'rate_limited';
+  if (code === 'INVALID_PASSWORD' && operation === 'change-password') return 'current_password_incorrect';
   if (code.includes('INVALID_EMAIL_OR_PASSWORD') || code === 'INVALID_PASSWORD' || code === 'INVALID_CREDENTIALS') {
     return 'invalid_credentials';
   }

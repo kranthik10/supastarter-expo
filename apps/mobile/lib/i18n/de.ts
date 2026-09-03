@@ -67,6 +67,8 @@ const de: typeof en = {
     haveAccount: 'Bereits registriert?',
     invalidEmail: 'Bitte gib eine gültige E-Mail-Adresse ein',
     passwordRequired: 'Bitte gib dein Passwort ein',
+    currentPasswordRequired: 'Bitte gib dein aktuelles Passwort ein',
+    currentPasswordIncorrect: 'Dein aktuelles Passwort ist falsch',
     shortPassword: 'Das Passwort muss mindestens 8 Zeichen lang sein',
     passwordMismatch: 'Die Passwörter stimmen nicht überein',
     nameRequired: 'Bitte gib deinen Namen ein',

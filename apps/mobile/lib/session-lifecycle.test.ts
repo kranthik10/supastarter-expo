@@ -50,4 +50,35 @@ describe('client session lifecycle', () => {
     expect(deps.clearQueryCache).toHaveBeenCalledOnce();
     expect(deps.clearOrganizationSession).toHaveBeenCalledOnce();
   });
+
+  it('discards a stored pending deep link when the session terminates', async () => {
+    const deps = { ...dependencies(), clearPendingLink: vi.fn(async () => undefined) };
+
+    await terminateClientSession(deps);
+
+    expect(deps.clearPendingLink).toHaveBeenCalledOnce();
+    expect(deps.clearAuthSession).toHaveBeenCalledOnce();
+  });
+
+  it('still terminates when pending-link clearing fails', async () => {
+    const deps = {
+      ...dependencies(),
+      clearPendingLink: vi.fn(async () => {
+        throw new Error('storage unavailable');
+      }),
+    };
+
+    await expect(terminateClientSession(deps)).resolves.toBeUndefined();
+
+    expect(deps.clearAuthSession).toHaveBeenCalledOnce();
+    expect(deps.clearOrganizationSession).toHaveBeenCalledOnce();
+  });
+
+  it('still terminates when no pending-link dependency is provided', async () => {
+    const deps = dependencies();
+
+    await expect(terminateClientSession(deps)).resolves.toBeUndefined();
+
+    expect(deps.clearAuthSession).toHaveBeenCalledOnce();
+  });
 });

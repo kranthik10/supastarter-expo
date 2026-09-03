@@ -9,7 +9,7 @@ import { useAuth } from '@repo/auth';
 import { useOrgs } from '@repo/organizations';
 import { useBilling } from '@repo/billing';
 import { changeLanguage } from '@/lib/i18n';
-import { useDeepLinks, consumePendingLink, storePendingLink } from '@/lib/linking';
+import { useDeepLinks, consumePendingLink, clearPendingLink, storePendingLink } from '@/lib/linking';
 import { addNotificationResponseListener, getLastNotificationData, type SafeNotificationData } from '@repo/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createClientMonitoring, installClientErrorHandlers, MonitoringErrorBoundary } from '@repo/monitoring/client';
@@ -72,6 +72,7 @@ export default function RootLayout() {
         },
         clearOrganizationSession: () => useOrgs.getState().clearSession(),
         clearAuthSession: () => useAuth.getState().clearLocalSession(),
+        clearPendingLink: () => clearPendingLink(),
       });
       sessionUserId.current = null;
       (router.replace as unknown as (path: string) => void)('/sign-in');

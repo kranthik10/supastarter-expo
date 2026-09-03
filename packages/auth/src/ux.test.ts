@@ -3,6 +3,9 @@ import {
   AuthActionError,
   authErrorMessageKey,
   classifyAuthError,
+  resolveErrorMessageKey,
+  validateChangePasswordInput,
+  validateProfileNameInput,
   validateResetPasswordInput,
   validateSignInInput,
   validateSignUpInput,
@@ -38,6 +41,25 @@ describe('authentication UX policy', () => {
     });
   });
 
+  it('validates profile name and change-password fields before network submission', () => {
+    expect(validateProfileNameInput('   ')).toEqual({ ok: false, code: 'name_required' });
+    expect(validateProfileNameInput(' Ada ')).toEqual({ ok: true, value: { name: 'Ada' } });
+    expect(validateChangePasswordInput('', 'secret12')).toEqual({ ok: false, code: 'current_password_required' });
+    expect(validateChangePasswordInput('old-secret', 'short')).toEqual({ ok: false, code: 'password_too_short' });
+    expect(validateChangePasswordInput('old-secret', 'secret12')).toEqual({
+      ok: true,
+      value: { currentPassword: 'old-secret', newPassword: 'secret12' },
+    });
+  });
+
+  it('distinguishes a wrong current password during password change from sign-in credentials', () => {
+    expect(classifyAuthError(new AuthActionError('INVALID_PASSWORD'), 'change-password')).toBe(
+      'current_password_incorrect'
+    );
+    expect(classifyAuthError(new AuthActionError('INVALID_PASSWORD'))).toBe('invalid_credentials');
+    expect(authErrorMessageKey('current_password_incorrect')).toBe('auth.currentPasswordIncorrect');
+  });
+
   it('maps Better Auth, HTTP, and network failures to finite user-facing codes', () => {
     expect(classifyAuthError(new AuthActionError('INVALID_EMAIL_OR_PASSWORD'))).toBe('invalid_credentials');
     expect(classifyAuthError(new AuthActionError('USER_ALREADY_EXISTS'))).toBe('account_exists');
@@ -45,6 +67,24 @@ describe('authentication UX policy', () => {
     expect(classifyAuthError(new TypeError('Failed to fetch'))).toBe('network');
     expect(classifyAuthError({ status: 503 })).toBe('server');
     expect(classifyAuthError(new Error('unknown implementation detail'))).toBe('server');
+  });
+
+  it('resolves any account-screen failure to a finite key without backend text', () => {
+    expect(resolveErrorMessageKey(new AuthActionError('INVALID_PASSWORD'), 'change-password')).toBe(
+      'auth.currentPasswordIncorrect'
+    );
+    expect(resolveErrorMessageKey({ code: 'name_required' })).toBe('auth.nameRequired');
+    expect(resolveErrorMessageKey(new TypeError('Failed to fetch'))).toBe('auth.networkError');
+    expect(resolveErrorMessageKey(new Error('database connection string leaked'), undefined, 'settings.unknownError')).toBe(
+      'settings.unknownError'
+    );
+    expect(resolveErrorMessageKey(null, undefined, 'settings.unknownError')).toBe('settings.unknownError');
+  });
+
+  it('never passes prototype-chain names or backend codes through as UX codes', () => {
+    expect(classifyAuthError({ code: 'toString' })).toBe('server');
+    expect(classifyAuthError(new AuthActionError('constructor'))).toBe('server');
+    expect(classifyAuthError({ code: 'INVALID_PASSWORD' })).toBe('invalid_credentials');
   });
 
   it('maps every finite UX error to a stable localized message key', () => {

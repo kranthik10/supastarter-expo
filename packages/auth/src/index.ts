@@ -198,7 +198,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     const current = get().user;
     if (!current) return;
     const result = await authClient.$invoke('/update-user', { method: 'POST', body: patch });
-    if (result.error) throw new Error(result.error.message ?? String(result.error));
+    if (result.error) throw toAuthActionError(result.error, 'UPDATE_PROFILE_FAILED');
     await get().refreshSession();
   },
 
@@ -207,7 +207,7 @@ export const useAuth = create<AuthState>((set, get) => ({
       method: 'POST',
       body: { currentPassword, newPassword, revokeOtherSessions },
     });
-    if (result.error) throw new Error(result.error.message ?? String(result.error));
+    if (result.error) throw toAuthActionError(result.error, 'CHANGE_PASSWORD_FAILED');
     await get().refreshSession();
   },
 
@@ -227,9 +227,12 @@ export {
   AuthActionError,
   authErrorMessageKey,
   classifyAuthError,
+  resolveErrorMessageKey,
+  validateChangePasswordInput,
   validateEmail,
+  validateProfileNameInput,
   validateResetPasswordInput,
   validateSignInInput,
   validateSignUpInput,
 } from './ux';
-export type { AuthUxErrorCode } from './ux';
+export type { AuthUxErrorCode, AuthUxOperation } from './ux';

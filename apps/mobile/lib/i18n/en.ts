@@ -64,6 +64,8 @@ const en = {
     haveAccount: 'Already have an account?',
     invalidEmail: 'Please enter a valid email address',
     passwordRequired: 'Please enter your password',
+    currentPasswordRequired: 'Please enter your current password',
+    currentPasswordIncorrect: 'Your current password is incorrect',
     shortPassword: 'Password must be at least 8 characters',
     passwordMismatch: 'Passwords do not match',
     nameRequired: 'Please enter your name',

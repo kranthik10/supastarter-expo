@@ -8,7 +8,10 @@ import { LogOut } from 'lucide-react-native';
 import Constants from 'expo-constants';
 import { Screen, Card, Text, Button, SegmentedControl, Avatar, ListRow, Input } from '@repo/ui';
 import { useTheme } from '@/lib/use-theme';
-import { useAuth } from '@repo/auth';
+import { useAuth, resolveErrorMessageKey, validateChangePasswordInput, validateProfileNameInput, type AuthUxOperation } from '@repo/auth';
+import { useOrgs } from '@repo/organizations';
+import { terminateClientSession } from '@/lib/session-lifecycle';
+import { clearPendingLink } from '@/lib/linking';
 import { useSettings, type ThemeMode, type Locale } from '@/lib/settings-store';
 import { uploadAvatar } from '@/lib/storage/files';
 import { analytics, setAnalyticsEnabled } from '@repo/analytics';
@@ -50,9 +53,18 @@ export default function Settings() {
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [avatarLoading, setAvatarLoading] = useState(false);
 
-  const showError = (error: unknown) => {
-    Alert.alert(t('settings.actionFailed'), error instanceof Error ? error.message : t('settings.unknownError'));
+  const showError = (error: unknown, operation?: AuthUxOperation) => {
+    Alert.alert(t('settings.actionFailed'), t(resolveErrorMessageKey(error, operation, 'settings.unknownError')));
   };
+
+  const terminateSession = (clearAuth: () => Promise<void>) =>
+    terminateClientSession({
+      clearQueryCache: () => queryClient.clear(),
+      beginOrganizationSession: async () => undefined,
+      clearOrganizationSession: () => useOrgs.getState().clearSession(),
+      clearAuthSession: clearAuth,
+      clearPendingLink: () => clearPendingLink(),
+    });
 
   const profileQuery = useQuery({
     queryKey: ['settings', 'profile'],
@@ -156,14 +168,14 @@ export default function Settings() {
   };
 
   const saveProfile = async () => {
-    const name = profileName.trim();
-    if (!name) {
-      Alert.alert(t('settings.actionFailed'), t('settings.nameRequired'));
+    const validation = validateProfileNameInput(profileName);
+    if (!validation.ok) {
+      Alert.alert(t('settings.actionFailed'), t(resolveErrorMessageKey({ code: validation.code }, undefined, 'settings.unknownError')));
       return;
     }
     setProfileLoading(true);
     try {
-      await updateProfile({ name });
+      await updateProfile({ name: validation.value.name });
       await queryClient.invalidateQueries({ queryKey: ['settings', 'profile'] });
       Alert.alert(t('settings.saved'));
     } catch (error) {
@@ -217,18 +229,19 @@ export default function Settings() {
   };
 
   const savePassword = async () => {
-    if (!currentPassword || !newPassword) {
-      Alert.alert(t('settings.actionFailed'), t('settings.passwordRequired'));
+    const validation = validateChangePasswordInput(currentPassword, newPassword);
+    if (!validation.ok) {
+      Alert.alert(t('settings.actionFailed'), t(resolveErrorMessageKey({ code: validation.code }, 'change-password', 'settings.unknownError')));
       return;
     }
     setPasswordLoading(true);
     try {
-      await changePassword(currentPassword, newPassword, false);
+      await changePassword(validation.value.currentPassword, validation.value.newPassword, false);
       setCurrentPassword('');
       setNewPassword('');
       Alert.alert(t('settings.passwordChanged'));
     } catch (error) {
-      showError(error);
+      showError(error, 'change-password');
     } finally {
       setPasswordLoading(false);
     }
@@ -259,7 +272,7 @@ export default function Settings() {
         onPress: () => {
           void deleteAccountMutation
             .mutateAsync()
-            .then(() => clearLocalSession())
+            .then(() => terminateSession(() => clearLocalSession()))
             .then(() => router.replace('/'))
             .catch(showError);
         },
@@ -364,7 +377,7 @@ export default function Settings() {
           onPress={() => {
             void unregisterPushNotifications()
               .catch(() => undefined)
-              .then(() => signOut())
+              .then(() => terminateSession(() => signOut()))
               .then(() => router.replace('/'));
           }}
           full
