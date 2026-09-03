@@ -1,9 +1,15 @@
 import React from 'react';
 import { Tabs } from 'expo-router';
 import { useTranslation } from 'react-i18next';
-import { Home, Users, CreditCard, Settings, Bell, NotebookPen } from 'lucide-react-native';
+import { CalendarCheck, Heart, Home, Bell, User } from 'lucide-react-native';
 import { useTheme } from '@/lib/use-theme';
 
+// ServiceHub product shell: customer-first tabs. Starter screens
+// (team, billing, notes, settings) stay mounted with href: null —
+// reachable from the Account workspace section, but no longer tabs.
+// Removal recipe (docs/phase-6-product-configuration.md): delete the
+// marketplace routes + this layout's marketplace tabs to restore a
+// starter-only shell.
 export default function TabsLayout() {
   const theme = useTheme();
   const { t } = useTranslation();
@@ -25,25 +31,25 @@ export default function TabsLayout() {
         options={{ title: t('tabs.home'), tabBarIcon: ({ color, size }) => <Home color={color} size={size} /> }}
       />
       <Tabs.Screen
-        name="team"
-        options={{ title: t('tabs.team'), tabBarIcon: ({ color, size }) => <Users color={color} size={size} /> }}
+        name="bookings"
+        options={{ title: t('tabs.bookings'), tabBarIcon: ({ color, size }) => <CalendarCheck color={color} size={size} /> }}
       />
       <Tabs.Screen
-        name="billing"
-        options={{ title: t('tabs.billing'), tabBarIcon: ({ color, size }) => <CreditCard color={color} size={size} /> }}
+        name="favorites"
+        options={{ title: t('tabs.favorites'), tabBarIcon: ({ color, size }) => <Heart color={color} size={size} /> }}
       />
       <Tabs.Screen
         name="notifications"
         options={{ title: t('tabs.notifications'), tabBarIcon: ({ color, size }) => <Bell color={color} size={size} /> }}
       />
       <Tabs.Screen
-        name="notes"
-        options={{ title: t('tabs.notes'), tabBarIcon: ({ color, size }) => <NotebookPen color={color} size={size} /> }}
+        name="account"
+        options={{ title: t('tabs.account'), tabBarIcon: ({ color, size }) => <User color={color} size={size} /> }}
       />
-      <Tabs.Screen
-        name="settings"
-        options={{ title: t('tabs.settings'), tabBarIcon: ({ color, size }) => <Settings color={color} size={size} /> }}
-      />
+      <Tabs.Screen name="team" options={{ href: null }} />
+      <Tabs.Screen name="billing" options={{ href: null }} />
+      <Tabs.Screen name="notes" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

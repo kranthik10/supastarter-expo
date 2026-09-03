@@ -16,7 +16,24 @@ const STATIC_ROUTES = new Set([
   '/assistant',
   '/notes',
   '/notes/new',
+  '/bookings',
+  '/favorites',
+  '/account',
+  '/search',
 ]);
+
+// Marketplace detail roots allow bounded nesting: /<root>/<id> and, for
+// the booking flow and account sections, /<root>/<id>/<step>. Every
+// segment must be a single safe token — no nesting beyond depth 3,
+// no query strings, no dot-only segments.
+const NESTED_MARKETPLACE_ROOTS: Record<string, readonly string[] | null> = {
+  category: null,
+  service: null,
+  provider: null,
+  booking: null,
+  book: ['provider', 'address', 'slot', 'review'],
+  account: ['addresses', 'provider', 'bookings', 'availability', 'profile', 'services'],
+};
 
 const SAFE_SEGMENT = /^[A-Za-z0-9._~-]{1,512}$/;
 const SAFE_SLUG = /^[A-Za-z0-9_-]{1,120}$/;
@@ -72,6 +89,20 @@ export function normalizeSafeInternalRoute(value: string): string | null {
     const params = new URLSearchParams(queryString);
     const entries = [...params.entries()];
     return entries.length === 1 && entries[0][0] === 'section' && SETTINGS_SECTIONS.has(entries[0][1]) ? '/settings' : null;
+  }
+
+  if (!queryString && pathname.length > 1 && !pathname.includes('//')) {
+    const segments = pathname.slice(1).split('/');
+    const root = segments[0] as string;
+    if (root in NESTED_MARKETPLACE_ROOTS && segments.length >= 2 && segments.length <= 3) {
+      if (segments.some((segment) => segment === '' || segment === '.' || segment === '..' || !SAFE_SEGMENT.test(segment))) {
+        return null;
+      }
+      if (segments.length === 2) return pathname;
+      const allowedSteps = NESTED_MARKETPLACE_ROOTS[root];
+      if (allowedSteps && allowedSteps.includes(segments[2] as string)) return pathname;
+      return null;
+    }
   }
 
   return !queryString && STATIC_ROUTES.has(pathname) ? pathname : null;

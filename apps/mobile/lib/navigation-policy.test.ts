@@ -41,4 +41,29 @@ describe('safe internal navigation policy', () => {
     expect(requiresAuthenticatedSession('/invite/opaque_123')).toBe(true);
     expect(requiresAuthenticatedSession('/home')).toBe(true);
   });
+
+  it('allows bounded marketplace nesting for catalog, booking flow, and account sections', () => {
+    expect(normalizeSafeInternalRoute('/bookings')).toBe('/bookings');
+    expect(normalizeSafeInternalRoute('/favorites')).toBe('/favorites');
+    expect(normalizeSafeInternalRoute('/account')).toBe('/account');
+    expect(normalizeSafeInternalRoute('/search')).toBe('/search');
+    expect(normalizeSafeInternalRoute('/category/cleaning')).toBe('/category/cleaning');
+    expect(normalizeSafeInternalRoute('/service/cm123abc')).toBe('/service/cm123abc');
+    expect(normalizeSafeInternalRoute('/provider/cm123abc')).toBe('/provider/cm123abc');
+    expect(normalizeSafeInternalRoute('/booking/cm123abc')).toBe('/booking/cm123abc');
+    expect(normalizeSafeInternalRoute('/book/cm123abc/provider')).toBe('/book/cm123abc/provider');
+    expect(normalizeSafeInternalRoute('/book/cm123abc/review')).toBe('/book/cm123abc/review');
+    expect(normalizeSafeInternalRoute('/account/addresses')).toBe('/account/addresses');
+    expect(normalizeSafeInternalRoute('/account/provider/availability')).toBe('/account/provider/availability');
+  });
+
+  it('rejects marketplace nesting abuse, unknown steps, and query smuggling', () => {
+    expect(normalizeSafeInternalRoute('/book/cm123abc/evil')).toBeNull();
+    expect(normalizeSafeInternalRoute('/book/cm123abc/provider/extra')).toBeNull();
+    expect(normalizeSafeInternalRoute('/service/../secret')).toBeNull();
+    expect(normalizeSafeInternalRoute('/service/cm123abc?token=secret')).toBeNull();
+    expect(normalizeSafeInternalRoute('/booking/cm123abc?redirect=https://evil.example')).toBeNull();
+    expect(normalizeSafeInternalRoute('/account/provider/availability?x=1')).toBeNull();
+    expect(normalizeSafeInternalRoute('/unknown-root/cm123abc')).toBeNull();
+  });
 });
