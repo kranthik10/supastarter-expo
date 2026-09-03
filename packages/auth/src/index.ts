@@ -1,6 +1,7 @@
 import { createAuthClient } from '@better-auth/client';
 import { secureStorage } from './storage';
 import { extractSessionToken, parsePersistedSession } from './security';
+import { AuthActionError, createPasswordResetActions, toAuthActionError } from './client-actions';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL ?? 'http://localhost:3000';
 const AUTH_BASE_URL = `${API_URL}/api/auth`;
@@ -21,6 +22,7 @@ const authClient: any = createAuthClient()({
     customFetchImpl: authFetch,
   },
 });
+const passwordResetActions = createPasswordResetActions(authClient);
 
 type Session = { token: string };
 type BetterAuthUser = {
@@ -53,6 +55,8 @@ export type AuthState = {
   hydrated: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (name: string, email: string, password: string) => Promise<void>;
+  requestPasswordReset: (email: string, redirectTo: string) => Promise<void>;
+  resetPassword: (token: string, newPassword: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (patch: Partial<Pick<User, 'name' | 'image'>>) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string, revokeOtherSessions?: boolean) => Promise<void>;
@@ -131,7 +135,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     set({ loading: true });
     try {
       const result = await authClient.signIn.email({ email, password });
-      if (result.error) throw new Error(result.error.message);
+      if (result.error) throw toAuthActionError(result.error, 'SIGN_IN_FAILED');
       const sessionToken = extractSessionToken(result.data);
       if (result.data?.user && sessionToken) {
         const user = mapBetterAuthUser(result.data.user as BetterAuthUser);
@@ -139,7 +143,7 @@ export const useAuth = create<AuthState>((set, get) => ({
         await persistSession(user, sessionToken);
         return;
       }
-      throw new Error('Sign in failed');
+      throw new AuthActionError('SIGN_IN_FAILED');
     } finally {
       set({ loading: false });
     }
@@ -149,7 +153,7 @@ export const useAuth = create<AuthState>((set, get) => ({
     set({ loading: true });
     try {
       const result = await authClient.signUp.email({ name, email, password, autoCreateSession: true });
-      if (result.error) throw new Error(result.error.message);
+      if (result.error) throw toAuthActionError(result.error, 'SIGN_UP_FAILED');
       const sessionToken = extractSessionToken(result.data);
       if (result.data?.user && sessionToken) {
         const user = mapBetterAuthUser(result.data.user as BetterAuthUser);
@@ -157,7 +161,25 @@ export const useAuth = create<AuthState>((set, get) => ({
         await persistSession(user, sessionToken);
         return;
       }
-      throw new Error('Sign up failed');
+      throw new AuthActionError('SIGN_UP_FAILED');
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  requestPasswordReset: async (email, redirectTo) => {
+    set({ loading: true });
+    try {
+      await passwordResetActions.requestPasswordReset(email, redirectTo);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  resetPassword: async (token, newPassword) => {
+    set({ loading: true });
+    try {
+      await passwordResetActions.resetPassword(token, newPassword);
     } finally {
       set({ loading: false });
     }
@@ -175,13 +197,14 @@ export const useAuth = create<AuthState>((set, get) => ({
   updateProfile: async (patch) => {
     const current = get().user;
     if (!current) return;
-    const result = await authClient.$invoke.post('/update-user', { body: patch });
+    const result = await authClient.$invoke('/update-user', { method: 'POST', body: patch });
     if (result.error) throw new Error(result.error.message ?? String(result.error));
     await get().refreshSession();
   },
 
   changePassword: async (currentPassword, newPassword, revokeOtherSessions = false) => {
-    const result = await authClient.$invoke.post('/change-password', {
+    const result = await authClient.$invoke('/change-password', {
+      method: 'POST',
       body: { currentPassword, newPassword, revokeOtherSessions },
     });
     if (result.error) throw new Error(result.error.message ?? String(result.error));
@@ -200,6 +223,13 @@ export const useAuth = create<AuthState>((set, get) => ({
   },
 }));
 
-export function validateEmail(email: string): boolean {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
+export {
+  AuthActionError,
+  authErrorMessageKey,
+  classifyAuthError,
+  validateEmail,
+  validateResetPasswordInput,
+  validateSignInInput,
+  validateSignUpInput,
+} from './ux';
+export type { AuthUxErrorCode } from './ux';

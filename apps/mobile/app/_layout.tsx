@@ -9,7 +9,7 @@ import { useAuth } from '@repo/auth';
 import { useOrgs } from '@repo/organizations';
 import { useBilling } from '@repo/billing';
 import { changeLanguage } from '@/lib/i18n';
-import { useDeepLinks, storePendingLink } from '@/lib/linking';
+import { useDeepLinks, consumePendingLink, storePendingLink } from '@/lib/linking';
 import { addNotificationResponseListener, getLastNotificationData, type SafeNotificationData } from '@repo/notifications';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createClientMonitoring, installClientErrorHandlers, MonitoringErrorBoundary } from '@repo/monitoring/client';
@@ -17,7 +17,8 @@ import { Text, Button } from '@repo/ui';
 import { analytics, configureAnalytics, screenNameForPath, setAnalyticsEnabled } from '@repo/analytics';
 import { config } from '@repo/config';
 import Constants from 'expo-constants';
-import { trpc } from '@repo/api';
+import { getAuthToken, setTRPCUnauthorizedHandler, trpc } from '@repo/api';
+import { reconcileClientSession, terminateClientSession } from '@/lib/session-lifecycle';
 
 void SplashScreen.preventAutoHideAsync().catch(() => {});
 const queryClient = new QueryClient();
@@ -32,12 +33,15 @@ configureAnalytics({ apiKey: config.posthogKey, host: config.posthogHost });
 export default function RootLayout() {
   const hydrated = useAuth((s) => s.hydrated);
   const settingsHydrated = useSettings((s) => s.hydrated);
+  const orgsHydrated = useOrgs((s) => s.hydrated);
   const isDark = useSettings((s) => s.isDark);
   const locale = useSettings((s) => s.locale);
   const user = useAuth((s) => s.user);
   const activeOrgId = useOrgs((s) => s.activeOrgId);
   const pathname = usePathname();
   const previousUserId = useRef<string | null>(null);
+  const sessionUserId = useRef<string | null | undefined>(undefined);
+  const didInitialSessionRestore = useRef(false);
   const analyticsOrgId = useRef<string | null>(null);
 
   const hydrateAuth = useAuth((s) => s.hydrate);
@@ -48,6 +52,71 @@ export default function RootLayout() {
   useDeepLinks();
 
   useEffect(() => installClientErrorHandlers(clientMonitoring), []);
+
+  useEffect(() => {
+    setTRPCUnauthorizedHandler(async (context) => {
+      // Ignore stale in-flight responses: only a 401 carrying the currently
+      // active credential may terminate this session. A delayed failure from
+      // a previous user's request must never log out the active user.
+      const currentToken = await getAuthToken();
+      const currentAuthorization = currentToken ? `Bearer ${currentToken}` : null;
+      // With no credential on either side there is no session to terminate;
+      // skip the redirect so credential-less 401s on public screens stay put.
+      if (!context.authorization && !currentAuthorization) return;
+      if (context.authorization !== currentAuthorization) return;
+      await terminateClientSession({
+        clearQueryCache: () => queryClient.clear(),
+        beginOrganizationSession: async (userId) => {
+          await useOrgs.getState().beginSession(userId);
+          await useOrgs.getState().refreshOrganizations();
+        },
+        clearOrganizationSession: () => useOrgs.getState().clearSession(),
+        clearAuthSession: () => useAuth.getState().clearLocalSession(),
+      });
+      sessionUserId.current = null;
+      (router.replace as unknown as (path: string) => void)('/sign-in');
+    });
+    return () => setTRPCUnauthorizedHandler(null);
+  }, []);
+
+  useEffect(() => {
+    if (!hydrated || !orgsHydrated) return;
+    let active = true;
+    void reconcileClientSession(sessionUserId.current, user?.id ?? null, {
+      clearQueryCache: () => queryClient.clear(),
+      beginOrganizationSession: async (userId) => {
+        await useOrgs.getState().beginSession(userId);
+        await useOrgs.getState().refreshOrganizations();
+      },
+      clearOrganizationSession: () => useOrgs.getState().clearSession(),
+      clearAuthSession: () => useAuth.getState().clearLocalSession(),
+    }).then(
+      (nextUserId) => {
+        if (!active) return;
+        // Single ownership for post-restore pending links: only the first
+        // reconciliation after hydration may consume a stored link. Later
+        // sign-in completions own their own consume-and-navigate step, so this
+        // must not run again and race them.
+        const isInitialRestore = !didInitialSessionRestore.current;
+        didInitialSessionRestore.current = true;
+        sessionUserId.current = nextUserId;
+        if (isInitialRestore && nextUserId) {
+          void consumePendingLink()
+            .catch(() => null)
+            .then((pending) => {
+              if (pending && active) (router.push as unknown as (s: string) => void)(pending);
+            });
+        }
+      },
+      () => {
+        // A failed restore (network/expired session mid-hydration) leaves refs
+        // untouched so a later user change still triggers a fresh reconcile.
+      }
+    );
+    return () => {
+      active = false;
+    };
+  }, [hydrated, orgsHydrated, user?.id]);
 
   useEffect(() => {
     if (!hydrated) return;

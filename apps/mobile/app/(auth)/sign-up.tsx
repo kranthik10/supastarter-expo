@@ -3,7 +3,8 @@ import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, Input, Screen, Text } from '@repo/ui';
-import { useAuth, validateEmail } from '@repo/auth';
+import { authErrorMessageKey, classifyAuthError, useAuth, validateSignUpInput } from '@repo/auth';
+import { consumePendingLink } from '@/lib/linking';
 
 export default function SignUp() {
   const { t } = useTranslation();
@@ -18,20 +19,14 @@ export default function SignUp() {
 
   const submit = async () => {
     setError(null);
+    const validation = validateSignUpInput(name, email, password);
+    if (!validation.ok) return setError(t(authErrorMessageKey(validation.code)));
     try {
-      await signUp(name, email.trim(), password);
-      router.replace('/onboarding');
+      await signUp(validation.value.name, validation.value.email, validation.value.password);
+      const pending = await consumePendingLink().catch(() => null);
+      (router.replace as unknown as (path: string) => void)(pending ?? '/onboarding');
     } catch (e) {
-      const code = (e as Error).message;
-      setError(
-        t(
-          code === 'shortPassword'
-            ? 'auth.shortPassword'
-            : code === 'nameRequired'
-              ? 'auth.nameRequired'
-              : 'auth.invalidEmail'
-        )
-      );
+      setError(t(authErrorMessageKey(classifyAuthError(e))));
     }
   };
 
@@ -69,9 +64,6 @@ export default function SignUp() {
         />
         <Button label={t('common.getStarted')} loading={loading} onPress={() => void submit()} full />
       </Card>
-      <Text variant="small" muted style={{ marginTop: 8 }}>
-        💡 {t('auth.demoHint')}
-      </Text>
       <View style={styles.switchRow}>
         <Text variant="small" muted>
           {t('auth.haveAccount')}{' '}

@@ -5,6 +5,7 @@ import { Button, Card, Screen, Text } from '@repo/ui';
 import { useAuth } from '@repo/auth';
 import { trpc } from '@repo/api';
 import { useOrgs } from '@repo/organizations';
+import { storePendingLink } from '@/lib/linking';
 
 export default function Invite() {
   const { token } = useLocalSearchParams<{ token: string }>();
@@ -14,7 +15,8 @@ export default function Invite() {
   const [loading, setLoading] = useState<'accept' | 'decline' | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
-  const goToSignIn = () => {
+  const goToSignIn = async () => {
+    if (token) await storePendingLink(`/invite/${token}`);
     (router.replace as unknown as (path: string) => void)('/sign-in');
   };
 
@@ -67,7 +69,7 @@ export default function Invite() {
             <Button label="Decline" variant="secondary" onPress={() => void decline()} loading={loading === 'decline'} full />
           </View>
         ) : (
-          <Button label="Sign in" onPress={goToSignIn} full />
+          <Button label="Sign in" onPress={() => void goToSignIn()} full />
         )}
       </Card>
     </Screen>

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { storage } from '@repo/storage';
 import { trpc } from '@repo/api';
 import type { User, MemberRole, Organization, Member } from '@repo/types';
+import { reconcileOrganizationSession, selectAccessibleOrganizationId, shouldApplyRefreshResult } from './session-policy';
 
 export type { MemberRole };
 
@@ -30,8 +31,11 @@ type ServerMember = {
 type OrgState = {
   orgs: Organization[];
   activeOrgId: string | null;
+  sessionUserId: string | null;
   pendingInvitationsByOrg: Record<string, PendingInvitation[]>;
   hydrated: boolean;
+  beginSession: (userId: string) => Promise<void>;
+  clearSession: () => Promise<void>;
   createOrg: (name: string, slug: string) => Promise<Organization>;
   refreshOrganizations: () => Promise<void>;
   setActiveOrg: (id: string) => void;
@@ -82,22 +86,58 @@ function toInvitation(row: { id: string; organizationId: string; email: string; 
   };
 }
 
-function persist(state: Pick<OrgState, 'orgs' | 'activeOrgId'>) {
-  void storage.set(KEY, JSON.stringify({ orgs: state.orgs, activeOrgId: state.activeOrgId }));
+function persist(state: Pick<OrgState, 'orgs' | 'activeOrgId' | 'sessionUserId'>) {
+  void storage.set(
+    KEY,
+    JSON.stringify({ orgs: state.orgs, activeOrgId: state.activeOrgId, sessionUserId: state.sessionUserId })
+  );
 }
 
 export const useOrgs = create<OrgState>((set, get) => ({
   orgs: [],
   activeOrgId: null,
+  sessionUserId: null,
   pendingInvitationsByOrg: {},
   hydrated: false,
+
+  beginSession: async (userId) => {
+    const current = get();
+    const next = reconcileOrganizationSession(
+      {
+        sessionUserId: current.sessionUserId,
+        organizationIds: current.orgs.map((org) => org.id),
+        activeOrgId: current.activeOrgId,
+      },
+      userId
+    );
+    set({
+      sessionUserId: next.sessionUserId,
+      orgs: next.reset ? [] : get().orgs,
+      activeOrgId: next.activeOrgId,
+      pendingInvitationsByOrg: next.reset ? {} : get().pendingInvitationsByOrg,
+    });
+    persist(get());
+  },
+
+  clearSession: async () => {
+    set({ orgs: [], activeOrgId: null, sessionUserId: null, pendingInvitationsByOrg: {}, hydrated: true });
+    await storage.remove(KEY);
+  },
 
   hydrate: async () => {
     try {
       const raw = await storage.get(KEY);
       if (raw) {
-        const parsed = JSON.parse(raw) as { orgs: Organization[]; activeOrgId: string | null };
-        set({ orgs: parsed.orgs ?? [], activeOrgId: parsed.activeOrgId ?? null });
+        const parsed = JSON.parse(raw) as {
+          orgs?: Organization[];
+          activeOrgId?: string | null;
+          sessionUserId?: string | null;
+        };
+        set({
+          orgs: parsed.orgs ?? [],
+          activeOrgId: selectAccessibleOrganizationId(parsed.activeOrgId ?? null, (parsed.orgs ?? []).map((org) => org.id)),
+          sessionUserId: parsed.sessionUserId ?? null,
+        });
       }
     } catch {}
     set({ hydrated: true });
@@ -108,17 +148,19 @@ export const useOrgs = create<OrgState>((set, get) => ({
     const mapped = toOrg(org);
     const next = { orgs: [...get().orgs, mapped], activeOrgId: mapped.id };
     set(next);
-    persist(next);
+    persist(get());
     await get().refreshMembers(mapped.id);
     return mapped;
   },
 
   refreshOrganizations: async () => {
+    const startedFor = get().sessionUserId;
     const rows = await trpc.organizations.list.query();
+    if (!shouldApplyRefreshResult(startedFor, get().sessionUserId)) return;
     const orgs = rows.map(toOrg);
-    const activeOrgId = get().activeOrgId && orgs.some((org) => org.id === get().activeOrgId) ? get().activeOrgId : orgs[0]?.id ?? null;
+    const activeOrgId = selectAccessibleOrganizationId(get().activeOrgId, orgs.map((org) => org.id));
     set({ orgs, activeOrgId });
-    persist({ orgs, activeOrgId });
+    persist(get());
   },
 
   setActiveOrg: (id) => {
@@ -131,7 +173,7 @@ export const useOrgs = create<OrgState>((set, get) => ({
     const members = rows.map(toMember);
     const orgs = get().orgs.map((org) => (org.id === orgId ? { ...org, members } : org));
     set({ orgs });
-    persist({ orgs, activeOrgId: get().activeOrgId });
+    persist(get());
   },
 
   refreshInvitations: async (orgId) => {

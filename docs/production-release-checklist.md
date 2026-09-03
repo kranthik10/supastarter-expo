@@ -53,7 +53,7 @@ This checklist is intentionally separate from milestone code completion. A green
 - [ ] Stripe and/or RevenueCat production account, product/price identifiers, server secret, and verified webhook secret.
 - [ ] Billing webhook signature verification, event uniqueness/replay store, ordering/reconciliation, and failure alerting.
 - [ ] R2/S3 bucket, endpoint, access key, secret, private-by-default policy, lifecycle rules, CORS, and provider HEAD/presign/delete verification.
-- [ ] Resend/email provider, sender/domain verification, invitation delivery monitoring, and bounce/complaint handling if email is advertised.
+- [ ] Resend/SMTP provider, sender/domain verification, password-reset and invitation delivery monitoring, and bounce/complaint handling if email is advertised.
 - [ ] Expo/APNs/FCM push credentials, invalid-token handling, receipt/reconciliation job, and physical-device evidence if push is advertised.
 - [ ] PostHog project/key/host and consent/privacy review if product analytics is enabled.
 - [ ] Sentry client/server DSNs, auth token/source-map workflow, alert routing, retention/privacy settings, and ingestion verification.
@@ -81,7 +81,7 @@ This checklist is intentionally separate from milestone code completion. A green
 - Production PostgreSQL, migrations, backup/restore, and operational monitoring.
 - Valid Better Auth secret/base URL and explicit production origin/CORS configuration.
 - EAS project linkage, Apple/Google signing, native build, and device validation.
-- Real email provider if invitation/account email delivery is advertised.
+- Real email provider and end-to-end password-reset/invitation delivery verification if account email is advertised.
 - Real push credentials/device validation if push is advertised.
 - Distributed rate limiting before a multi-replica public deployment.
 - Required privacy/terms/support/store disclosures.
@@ -92,7 +92,7 @@ This checklist is intentionally separate from milestone code completion. A green
 - Scheduled push receipt reconciliation and invalid-token cleanup.
 - PostHog/Sentry project setup, ingestion checks, alert routing, retention review, and source-map workflow.
 - Production API custom domain/TLS/proxy limits and health/rollback checks.
-- Email delivery observability and account/invitation lifecycle verification.
+- Email delivery observability and password-reset/account/invitation lifecycle verification.
 - Delayed hard-delete/grace-period lifecycle if promised by product policy.
 - Configured production logging/metrics/alerts that preserve the monitoring privacy boundary.
 

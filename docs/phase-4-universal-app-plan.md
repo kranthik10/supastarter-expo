@@ -59,7 +59,7 @@
 **Scope:** complete the user-facing authentication lifecycle without changing identity architecture.
 
 - Add reset-password route with safe token parsing, password validation, success, invalid/expired-token, and retry states.
-- Wire forgot-password to the supported Better Auth/provider reset operation when email delivery is configured; otherwise show an explicit not-configured state rather than “sent.”
+- Wire forgot-password to Better Auth's reset operation. Keep the public result enumeration-safe and delivery-neutral; record an unconfigured server email provider as an explicit release gate rather than claiming “sent.”
 - Add real email verification/resend behavior only through configured Better Auth semantics; otherwise remove misleading resend success.
 - Correct sign-in error mapping for invalid credentials, duplicate account, validation, not-configured, and network failures.
 - Remove, disable, or implement the GitHub/OAuth control; never route it through password submit and never display a missing translation key.

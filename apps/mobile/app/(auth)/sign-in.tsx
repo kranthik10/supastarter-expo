@@ -3,7 +3,8 @@ import { View, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useTranslation } from 'react-i18next';
 import { Button, Card, Input, Screen, Text } from '@repo/ui';
-import { useAuth, validateEmail } from '@repo/auth';
+import { authErrorMessageKey, classifyAuthError, useAuth, validateSignInInput } from '@repo/auth';
+import { consumePendingLink } from '@/lib/linking';
 
 export default function SignIn() {
   const { t } = useTranslation();
@@ -17,12 +18,14 @@ export default function SignIn() {
 
   const submit = async () => {
     setError(null);
-    if (!validateEmail(email)) return setError(t('auth.invalidEmail'));
+    const validation = validateSignInInput(email, password);
+    if (!validation.ok) return setError(t(authErrorMessageKey(validation.code)));
     try {
-      await signIn(email.trim(), password);
-      router.replace('/home');
+      await signIn(validation.value.email, validation.value.password);
+      const pending = await consumePendingLink().catch(() => null);
+      (router.replace as unknown as (path: string) => void)(pending ?? '/home');
     } catch (e) {
-      setError(t(`auth.${(e as Error).message === 'shortPassword' ? 'shortPassword' : 'invalidEmail'}`));
+      setError(t(authErrorMessageKey(classifyAuthError(e))));
     }
   };
 
@@ -58,14 +61,7 @@ export default function SignIn() {
           size="md"
           onPress={() => router.push('/forgot-password')}
         />
-        <Text variant="small" muted align="center">
-          {t('common.or')}
-        </Text>
-        <Button label={t('auth.continueWithGithub')} variant="secondary" onPress={() => void submit()} full />
       </Card>
-      <Text variant="small" muted style={{ marginTop: 8 }}>
-        💡 {t('auth.demoHint')}
-      </Text>
       <View style={styles.switchRow}>
         <Text variant="small" muted>
           {t('auth.noAccount')}{' '}

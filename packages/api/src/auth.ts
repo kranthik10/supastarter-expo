@@ -3,6 +3,7 @@ import { bearer } from 'better-auth/plugins';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { getDb, schema } from '@repo/database';
 import { parseAllowedOrigins } from './http-security';
+import { createPasswordResetEmailHandler } from './email';
 
 type AuthEnvironment = Record<string, string | undefined>;
 
@@ -19,10 +20,15 @@ export function getAuthConfig(env: AuthEnvironment = process.env): AuthConfig {
   } catch {
     throw new Error('BETTER_AUTH_URL must be a valid URL');
   }
+  const appScheme = env.EXPO_PUBLIC_APP_SCHEME ?? 'mobile-saas';
+  if (!/^[A-Za-z][A-Za-z0-9+.-]*$/.test(appScheme)) throw new Error('EXPO_PUBLIC_APP_SCHEME must be a valid URL scheme');
+  const trustedOrigins = Array.from(
+    new Set([...parseAllowedOrigins(env.CORS_ALLOWED_ORIGINS), `${appScheme}://reset-password`])
+  );
   return {
     secret,
     baseURL,
-    trustedOrigins: parseAllowedOrigins(env.CORS_ALLOWED_ORIGINS),
+    trustedOrigins,
   };
 }
 
@@ -34,7 +40,11 @@ export function getAuth() {
     secret: authConfig.secret,
     baseURL: authConfig.baseURL,
     trustedOrigins: authConfig.trustedOrigins,
-    emailAndPassword: { enabled: true },
+    emailAndPassword: {
+      enabled: true,
+      sendResetPassword: createPasswordResetEmailHandler(),
+      revokeSessionsOnPasswordReset: true,
+    },
     session: { expiresIn: 60 * 60 * 24 * 7 },
     plugins: [bearer()],
   });
