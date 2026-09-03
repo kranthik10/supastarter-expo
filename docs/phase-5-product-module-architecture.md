@@ -42,7 +42,7 @@ docs/                                 audit + delivery records per milestone con
 
 ## What is reusable vs domain-local (from Notes audit)
 
-Reusable: `requireOrgActor` shape (membership → permission → scoped
+Reusable: the `requireNoteActor` shape (membership → permission → scoped
 query), strict-zod list envelope (bounded limit/cursor/search),
 limit-plus-one `(createdAt,id)` pagination, `resolveQueryState`,
 shared states, `normalizeSafeInternalRoute`, i18n block pattern,

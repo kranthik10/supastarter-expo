@@ -18,7 +18,7 @@ Contracts: `docs/phase-5-server-module-contract.md`,
    strings, `idSchema` IDs, `limit` 1–100, opaque ≤128-char cursors,
    `z.enum` filters/sorts only.
 5. **Service/router** — add a `router({…})` section in
-   `packages/api/src/router.ts`: `protectedProcedure` → `requireXActor`
+   `packages/api/src/router.ts`: `protectedProcedure` → `requireNoteActor`-shaped guard
    (membership → permission) → org-constrained queries → public
    projection. Writes emit catalog events with `{ organization_id }` only.
 6. **API registration** — the section key (e.g. `notes`) is the client

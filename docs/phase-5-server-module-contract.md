@@ -8,12 +8,12 @@ Reference: `packages/api/src/router.ts` `notes` section (lines ~1015–1110).
 ```text
 protectedProcedure
   → .input(strict zod schema, organizationId: idSchema first)
-  → await requireXActor(db, input.organizationId, ctx.user.id, '<module>.<action>')
+  → await requireNoteActor(db, input.organizationId, ctx.user.id, '<module>.<action>')
   → every query/update/delete constrained by eq(table.organizationId, input.organizationId)
   → public projection (publicNote-style: no internal columns)
 ```
 
-`requireXActor` resolves organization → verifies membership →
+`requireNoteActor` resolves organization → verifies membership →
 asserts permission, and throws `FORBIDDEN organization_forbidden`
 before any resource read. Never fetch-by-id first and hope a later
 check catches it: `get`/`update`/`delete` all carry the
@@ -36,7 +36,8 @@ results map to `NOT_FOUND` (never leak cross-org existence).
 
 - `.strict()` schemas; bounded strings (e.g. title 1–120, body ≤4000);
   `idSchema` (cuid) for all IDs; pagination `limit` 1–100 (default 20);
-  opaque base64url cursors ≤128 chars, strict-decode or
+  opaque cursors ≤128 chars (`encodeURIComponent(ISO-timestamp|id)`),
+  strict-decode with round-trip ISO validation, or
   `BAD_REQUEST <module>_cursor_invalid`.
 - Filters/sorts: allowlisted literals only (z.enum). No arbitrary
   field names, no SQL-like operators. A module with no server-side
