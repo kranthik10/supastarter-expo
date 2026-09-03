@@ -182,6 +182,8 @@ const de: typeof en = {
     filterAll: 'Alle',
     sortAZ: 'A–Z',
     sortZA: 'Z–A',
+    switchWorkspace: 'Workspace wechseln',
+    current: 'Aktuell',
   },
   billing: {
     title: 'Billing',

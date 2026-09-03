@@ -22,6 +22,13 @@ describe('mobile deep-link parsing policy', () => {
     );
   });
 
+  it('routes bare note list and detail paths through the same safe policy', () => {
+    expect(routeFromDeepLinkParts('notes', {})).toBe('/notes');
+    expect(routeFromDeepLinkParts('notes/new', {})).toBe('/notes/new');
+    expect(routeFromDeepLinkParts('notes/cm123abc', {})).toBe('/notes/cm123abc');
+    expect(routeFromDeepLinkParts('notes/cm123abc', { token: 'secret' })).toBeNull();
+  });
+
   it('rejects unknown, malformed, and credential-bearing unrelated routes', () => {
     expect(routeFromDeepLinkParts('unknown', {})).toBeNull();
     expect(routeFromDeepLinkParts('home', { token: 'opaque_reset' })).toBeNull();

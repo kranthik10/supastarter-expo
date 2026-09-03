@@ -14,6 +14,8 @@ const STATIC_ROUTES = new Set([
   '/create-organization',
   '/welcome',
   '/assistant',
+  '/notes',
+  '/notes/new',
 ]);
 
 const SAFE_SEGMENT = /^[A-Za-z0-9._~-]{1,512}$/;
@@ -44,6 +46,16 @@ export function normalizeSafeInternalRoute(value: string): string | null {
   if (pathname.startsWith('/organization/')) {
     const slug = pathname.slice('/organization/'.length);
     return !queryString && SAFE_SLUG.test(slug) ? `/organization/${slug}` : null;
+  }
+
+  if (pathname.startsWith('/notes/')) {
+    const segment = pathname.slice('/notes/'.length);
+    // Exact static sub-route first; any other single safe segment is a note
+    // id. Nested paths and query strings never match. Dot-only segments
+    // are rejected as defense-in-depth even though separators never reach here.
+    if (!queryString && segment === 'new') return '/notes/new';
+    if (segment === '.' || segment === '..') return null;
+    return !queryString && segment !== 'new' && SAFE_SEGMENT.test(segment) ? pathname : null;
   }
 
   if (pathname === '/reset-password' && queryString) {

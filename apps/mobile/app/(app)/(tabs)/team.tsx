@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, StyleSheet, Alert, Pressable } from 'react-native';
 import { useTranslation } from 'react-i18next';
+import { useQueryClient } from '@tanstack/react-query';
 import { UserPlus, Trash2, RefreshCw } from 'lucide-react-native';
 import { Screen, Card, Text, Input, Button, Avatar, Badge, ListRow } from '@repo/ui';
 import { useTheme } from '@/lib/use-theme';
@@ -17,6 +18,9 @@ export default function Team() {
   const { t } = useTranslation();
   const user = useAuth((s) => s.user);
   const org = useActiveOrg();
+  const orgs = useOrgs((s) => s.orgs);
+  const setActiveOrg = useOrgs((s) => s.setActiveOrg);
+  const queryClient = useQueryClient();
   const refreshMembers = useOrgs((s) => s.refreshMembers);
   const refreshInvitations = useOrgs((s) => s.refreshInvitations);
   const inviteMember = useOrgs((s) => s.inviteMember);
@@ -150,6 +154,14 @@ export default function Team() {
   const roleLabel = (r: MemberRole) => t(`team.${r}`);
   const displayName = (name: string | null | undefined, memberEmail: string) => name ?? memberEmail.split('@')[0] ?? t('common.user');
 
+  const switchOrg = (id: string) => {
+    if (id === org.id) return;
+    setActiveOrg(id);
+    // Org-keyed queries refetch under the new org; invalidating everything
+    // guarantees no stale list, billing, or overview data survives the switch.
+    void queryClient.invalidateQueries();
+  };
+
   return (
     <Screen>
       <View style={styles.header}>
@@ -163,6 +175,24 @@ export default function Team() {
           <RefreshCw color={theme.primary} size={20} />
         </Pressable>
       </View>
+
+      {orgs.length > 1 ? (
+        <Card style={styles.card}>
+          <Text variant="h3">{t('team.switchWorkspace')}</Text>
+          {orgs.map((o) => {
+            const active = o.id === org.id;
+            return (
+              <ListRow
+                key={o.id}
+                title={o.name}
+                subtitle={o.slug}
+                onPress={active ? undefined : () => switchOrg(o.id)}
+                trailing={active ? <Badge label={t('team.current')} tone="brand" /> : undefined}
+              />
+            );
+          })}
+        </Card>
+      ) : null}
 
       {canInvite ? (
         <Card style={styles.card}>

@@ -179,6 +179,8 @@ const en = {
     filterAll: 'All',
     sortAZ: 'A–Z',
     sortZA: 'Z–A',
+    switchWorkspace: 'Switch workspace',
+    current: 'Current',
   },
   billing: {
     title: 'Billing',
