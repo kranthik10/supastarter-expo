@@ -21,6 +21,14 @@ export const analyticsEventNames = [
   'note_created',
   'note_updated',
   'note_deleted',
+  'service_search_used',
+  'service_viewed',
+  'provider_viewed',
+  'booking_started',
+  'booking_created',
+  'booking_cancelled',
+  'review_submitted',
+  'favorite_changed',
 ] as const;
 
 export type AnalyticsEventName = (typeof analyticsEventNames)[number];
@@ -33,8 +41,8 @@ export type AnalyticsEventProperties = {
   user_signed_out: Record<string, never>;
   organization_created: { organization_id: string };
   invitation_accepted: { organization_id: string };
-  notification_opened: { category: 'team' | 'billing' | 'security' | 'system'; organization_id?: string };
-  notification_marked_read: { category: 'team' | 'billing' | 'security' | 'system'; organization_id?: string };
+  notification_opened: { category: 'team' | 'billing' | 'security' | 'system' | 'booking'; organization_id?: string };
+  notification_marked_read: { category: 'team' | 'billing' | 'security' | 'system' | 'booking'; organization_id?: string };
   push_permission_changed: { status: 'granted' | 'denied' | 'unavailable' };
   settings_updated: { field: 'theme' | 'locale' | 'marketing_opt_in' | 'invite_emails' | 'billing_alerts' };
   theme_changed: { theme: 'system' | 'light' | 'dark' };
@@ -50,6 +58,16 @@ export type AnalyticsEventProperties = {
   note_created: { organization_id: string };
   note_updated: { organization_id: string };
   note_deleted: { organization_id: string };
+  // Marketplace (ServiceHub): IDs and counts only — never addresses,
+  // notes, review bodies, names, emails, or raw search text.
+  service_search_used: { result_count: number; filter_count: number; sort_key: string };
+  service_viewed: { service_id: string };
+  provider_viewed: { provider_id: string };
+  booking_started: { service_id: string };
+  booking_created: { service_id: string };
+  booking_cancelled: Record<string, never>;
+  review_submitted: Record<string, never>;
+  favorite_changed: { target: 'service' | 'provider'; favorited: boolean };
 };
 
 export type ScreenName =
@@ -64,9 +82,13 @@ export type ScreenName =
   | 'onboarding'
   | 'assistant'
   | 'notes'
+  | 'marketplace'
+  | 'bookings'
+  | 'booking'
+  | 'provider'
   | 'unknown';
 
-export const screenNames = ['home', 'team', 'billing', 'settings', 'notifications', 'organization', 'invite', 'auth', 'onboarding', 'assistant', 'notes', 'unknown'] as const;
+export const screenNames = ['home', 'team', 'billing', 'settings', 'notifications', 'organization', 'invite', 'auth', 'onboarding', 'assistant', 'notes', 'marketplace', 'bookings', 'booking', 'provider', 'unknown'] as const;
 
 const eventPropertyKeys: Record<AnalyticsEventName, readonly string[]> = {
   user_signed_in: ['method'],
@@ -91,6 +113,14 @@ const eventPropertyKeys: Record<AnalyticsEventName, readonly string[]> = {
   note_created: ['organization_id'],
   note_updated: ['organization_id'],
   note_deleted: ['organization_id'],
+  service_search_used: ['result_count', 'filter_count', 'sort_key'],
+  service_viewed: ['service_id'],
+  provider_viewed: ['provider_id'],
+  booking_started: ['service_id'],
+  booking_created: ['service_id'],
+  booking_cancelled: [],
+  review_submitted: [],
+  favorite_changed: ['target', 'favorited'],
 };
 
 const forbiddenPropertyKeys = new Set([
@@ -165,6 +195,10 @@ export function screenNameForPath(path: string): ScreenName {
   if (first === 'invite') return 'invite';
   if (first === 'organization') return 'organization';
   if (['home', 'team', 'billing', 'settings', 'notifications', 'assistant', 'notes'].includes(first)) return first as ScreenName;
+  if (['marketplace', 'bookings', 'booking', 'provider', 'category', 'service', 'favorites'].includes(first)) {
+    if (first === 'category' || first === 'service') return 'marketplace';
+    return first as ScreenName;
+  }
   if (['sign-in', 'sign-up', 'forgot-password', 'verify-email'].includes(first)) return 'auth';
   if (['onboarding', 'welcome', 'create-organization'].includes(first)) return 'onboarding';
   return 'unknown';

@@ -24,7 +24,7 @@ describe('notification policy', () => {
   });
 
   it('uses a finite category representation', () => {
-    expect(notificationCategories).toEqual(['team', 'billing', 'security', 'system']);
+    expect(notificationCategories).toEqual(['team', 'billing', 'security', 'system', 'booking']);
   });
 
   it('gates billing push without suppressing other notification categories', () => {

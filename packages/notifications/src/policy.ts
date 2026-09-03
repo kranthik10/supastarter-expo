@@ -1,4 +1,4 @@
-export const notificationCategories = ['team', 'billing', 'security', 'system'] as const;
+export const notificationCategories = ['team', 'billing', 'security', 'system', 'booking'] as const;
 export type NotificationCategory = (typeof notificationCategories)[number];
 
 export type SafeNotificationData = {
@@ -12,7 +12,7 @@ export type NotificationPreferenceSnapshot = {
 
 const expoPushTokenPattern = /^(?:Expo|Exponent)PushToken\[[A-Za-z0-9_-]{1,256}\]$/;
 const idPattern = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
-const routePattern = /^\/(?:home|team|billing|settings|notifications|invitations|organization\/[a-z0-9][a-z0-9-]{1,119})$/;
+const routePattern = /^\/(?:home|team|billing|settings|notifications|bookings|booking\/[A-Za-z0-9._~-]{1,128}|invitations|organization\/[a-z0-9][a-z0-9-]{1,119})$/;
 
 export function isExpoPushToken(value: string): boolean {
   return expoPushTokenPattern.test(value);

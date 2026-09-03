@@ -298,6 +298,252 @@ export const notes = pgTable(
   (t) => [index('notes_org_idx').on(t.organizationId), index('notes_user_idx').on(t.userId)]
 );
 
+// ── ServiceHub marketplace (Phase 6 reference product domain) ──────────────
+// Catalog (categories/services) is global to the marketplace: any
+// authenticated user may read it. Ownership-scoped rows (addresses,
+// bookings, reviews, favorites) key off users.id — the marketplace
+// customer/provider identity, deliberately distinct from SaaS
+// organization owner/admin/member roles.
+
+export const bookingStatusEnum = pgEnum('booking_status', [
+  'pending',
+  'confirmed',
+  'in_progress',
+  'completed',
+  'cancelled',
+  'rejected',
+]);
+
+export const serviceCategories = pgTable(
+  'service_categories',
+  {
+    id: text('id').primaryKey(),
+    name: text('name').notNull(),
+    slug: text('slug').notNull().unique(),
+    description: text('description'),
+    icon: text('icon').notNull().default('sparkles'),
+    displayOrder: integer('display_order').notNull().default(0),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('svc_cats_active_order_idx').on(t.active, t.displayOrder)]
+);
+
+export const services = pgTable(
+  'services',
+  {
+    id: text('id').primaryKey(),
+    categoryId: text('category_id')
+      .notNull()
+      .references(() => serviceCategories.id, { onDelete: 'restrict' }),
+    name: text('name').notNull(),
+    description: text('description'),
+    durationMinutes: integer('duration_minutes').notNull(),
+    priceMinor: integer('price_minor').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    active: boolean('active').notNull().default(true),
+    displayOrder: integer('display_order').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('services_category_idx').on(t.categoryId),
+    index('services_active_order_idx').on(t.active, t.displayOrder),
+    index('services_price_idx').on(t.priceMinor),
+  ]
+);
+
+export const serviceProviders = pgTable(
+  'service_providers',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .unique()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    displayName: text('display_name').notNull(),
+    bio: text('bio'),
+    avatarUrl: text('avatar_url'),
+    active: boolean('active').notNull().default(true),
+    ratingSum: integer('rating_sum').notNull().default(0),
+    ratingCount: integer('rating_count').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('svc_providers_user_idx').on(t.userId), index('svc_providers_active_idx').on(t.active)]
+);
+
+export const providerServices = pgTable(
+  'provider_services',
+  {
+    id: text('id').primaryKey(),
+    providerId: text('provider_id')
+      .notNull()
+      .references(() => serviceProviders.id, { onDelete: 'cascade' }),
+    serviceId: text('service_id')
+      .notNull()
+      .references(() => services.id, { onDelete: 'cascade' }),
+    priceMinor: integer('price_minor'),
+    durationMinutes: integer('duration_minutes'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex('provider_services_provider_service_uidx').on(t.providerId, t.serviceId),
+    index('provider_services_service_idx').on(t.serviceId),
+    index('provider_services_provider_idx').on(t.providerId),
+  ]
+);
+
+export const providerAvailability = pgTable(
+  'provider_availability',
+  {
+    id: text('id').primaryKey(),
+    providerId: text('provider_id')
+      .notNull()
+      .references(() => serviceProviders.id, { onDelete: 'cascade' }),
+    weekday: integer('weekday').notNull(),
+    startMinutes: integer('start_minutes').notNull(),
+    endMinutes: integer('end_minutes').notNull(),
+    timezone: text('timezone').notNull().default('UTC'),
+    active: boolean('active').notNull().default(true),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('provider_avail_provider_idx').on(t.providerId)]
+);
+
+export const customerAddresses = pgTable(
+  'customer_addresses',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    label: text('label').notNull(),
+    line1: text('line1').notNull(),
+    line2: text('line2'),
+    city: text('city').notNull(),
+    region: text('region').notNull(),
+    postalCode: text('postal_code').notNull(),
+    country: text('country').notNull().default('US'),
+    instructions: text('instructions'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('customer_addresses_user_idx').on(t.userId)]
+);
+
+export const bookings = pgTable(
+  'bookings',
+  {
+    id: text('id').primaryKey(),
+    customerId: text('customer_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    providerId: text('provider_id')
+      .notNull()
+      .references(() => serviceProviders.id, { onDelete: 'restrict' }),
+    serviceId: text('service_id')
+      .notNull()
+      .references(() => services.id, { onDelete: 'restrict' }),
+    // Commercial snapshot: history shows the agreed price even if the
+    // catalog changes later. Never trust client-supplied amounts.
+    priceMinor: integer('price_minor').notNull(),
+    currency: text('currency').notNull().default('USD'),
+    durationMinutes: integer('duration_minutes').notNull(),
+    serviceName: text('service_name').notNull(),
+    providerName: text('provider_name').notNull(),
+    // Address snapshot: bookings keep working if the address is deleted.
+    addressId: text('address_id').references(() => customerAddresses.id, { onDelete: 'set null' }),
+    addressLabel: text('address_label').notNull(),
+    addressLine1: text('address_line1').notNull(),
+    addressCity: text('address_city').notNull(),
+    addressRegion: text('address_region').notNull(),
+    addressPostalCode: text('address_postal_code').notNull(),
+    addressCountry: text('address_country').notNull(),
+    scheduledStart: timestamp('scheduled_start', { withTimezone: true }).notNull(),
+    scheduledEnd: timestamp('scheduled_end', { withTimezone: true }).notNull(),
+    status: bookingStatusEnum('status').notNull().default('pending'),
+    customerNote: text('customer_note'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('bookings_customer_idx').on(t.customerId),
+    index('bookings_provider_idx').on(t.providerId),
+    index('bookings_status_idx').on(t.status),
+    index('bookings_scheduled_idx').on(t.scheduledStart),
+    index('bookings_provider_scheduled_idx').on(t.providerId, t.scheduledStart),
+  ]
+);
+
+export const bookingStatusHistory = pgTable(
+  'booking_status_history',
+  {
+    id: text('id').primaryKey(),
+    bookingId: text('booking_id')
+      .notNull()
+      .references(() => bookings.id, { onDelete: 'cascade' }),
+    fromStatus: bookingStatusEnum('from_status'),
+    toStatus: bookingStatusEnum('to_status').notNull(),
+    actorId: text('actor_id').references(() => users.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('booking_history_booking_idx').on(t.bookingId)]
+);
+
+export const reviews = pgTable(
+  'reviews',
+  {
+    id: text('id').primaryKey(),
+    bookingId: text('booking_id')
+      .notNull()
+      .unique()
+      .references(() => bookings.id, { onDelete: 'cascade' }),
+    customerId: text('customer_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    providerId: text('provider_id')
+      .notNull()
+      .references(() => serviceProviders.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    comment: text('comment'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('reviews_provider_idx').on(t.providerId), index('reviews_customer_idx').on(t.customerId)]
+);
+
+export const favoriteServices = pgTable(
+  'favorite_services',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    serviceId: text('service_id')
+      .notNull()
+      .references(() => services.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('fav_services_user_service_uidx').on(t.userId, t.serviceId)]
+);
+
+export const favoriteProviders = pgTable(
+  'favorite_providers',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    providerId: text('provider_id')
+      .notNull()
+      .references(() => serviceProviders.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex('fav_providers_user_provider_uidx').on(t.userId, t.providerId)]
+);
+
 export const usersRelations = relations(users, ({ many, one }) => ({
   accounts: many(accounts),
   sessions: many(sessions),
@@ -305,6 +551,9 @@ export const usersRelations = relations(users, ({ many, one }) => ({
   devices: many(devices),
   notifications: many(notifications),
   preferences: one(userPreferences, { fields: [users.id], references: [userPreferences.userId] }),
+  providerProfile: one(serviceProviders, { fields: [users.id], references: [serviceProviders.userId] }),
+  customerAddresses: many(customerAddresses),
+  customerBookings: many(bookings, { relationName: 'customerBookings' }),
 }));
 
 export const organizationsRelations = relations(organizations, ({ many }) => ({

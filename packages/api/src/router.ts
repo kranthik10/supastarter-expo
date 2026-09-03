@@ -24,6 +24,7 @@ import {
   type MemberRole,
 } from './team';
 import { getInvitationEmailProvider } from './email';
+import { marketplaceRouter } from './marketplace';
 import { cleanupExpiredFiles, getOrganizationStorageUsage } from './storage-service';
 import { getStorageProvider, StorageProviderError, type StorageProvider } from '@repo/storage/server';
 import { buildObjectKey, canConfirmFile, canReserveStorage, DOWNLOAD_URL_EXPIRY_SECONDS, MAX_FILE_SIZE_BYTES, storageLimitBytes, UPLOAD_URL_EXPIRY_SECONDS, validateUploadMetadata } from '@repo/storage/policy';
@@ -43,14 +44,11 @@ import {
 const t = initTRPC.context<ApiContext>().create({ transformer: superjson });
 const serverAnalyticsProvider = getServerAnalyticsProvider();
 
-export const middleware = t.middleware;
-export const router = t.router;
-export const publicProcedure = t.procedure;
+// Base builders live in './rpc' (re-exported so existing importers keep
+// working); domain routers import from './rpc' directly to avoid a cycle.
+import { middleware, router, publicProcedure, protectedProcedure } from './rpc';
 
-export const protectedProcedure = t.procedure.use(({ ctx, next }) => {
-  if (!ctx.user) throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Not authenticated' });
-  return next({ ctx: { ...ctx, user: ctx.user } });
-});
+export { middleware, router, publicProcedure, protectedProcedure };
 
 function requirePermission(role: MemberRole, permission: Parameters<typeof assertCan>[1]): void {
   try {
@@ -422,6 +420,8 @@ export const appRouter = router({
   health: router({
     check: publicProcedure.query(() => ({ ok: true, ts: new Date().toISOString() })),
   }),
+
+  marketplace: marketplaceRouter,
 
   users: router({
     me: protectedProcedure.query(({ ctx }) => {
