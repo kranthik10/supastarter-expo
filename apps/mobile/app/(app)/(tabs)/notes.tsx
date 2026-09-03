@@ -10,6 +10,7 @@ import { useActiveOrg } from '@repo/organizations';
 import { useTheme } from '@/lib/use-theme';
 import { resolveQueryState } from '@/lib/query-state';
 import { flattenPages, matchesSearchQuery, normalizeSearchQuery, sortByField } from '@/lib/list-policy';
+import { orgModuleKey } from '@/lib/query-keys';
 import { useTranslation } from 'react-i18next';
 
 type NoteItem = {
@@ -46,7 +47,7 @@ export default function Notes() {
   }, [search]);
 
   const listQuery = useInfiniteQuery({
-    queryKey: ['notes', 'list', org?.id],
+    queryKey: orgModuleKey('notes', 'list', org?.id ?? ''),
     initialPageParam: null as string | null,
     queryFn: ({ pageParam }) =>
       trpc.notes.list.query({ organizationId: org!.id, limit: 20, ...(pageParam ? { cursor: pageParam } : {}) }),

@@ -7,6 +7,7 @@ import { trpc } from '@repo/api';
 import { useAuth } from '@repo/auth';
 import { useActiveOrg } from '@repo/organizations';
 import { useTheme } from '@/lib/use-theme';
+import { orgModuleKey } from '@/lib/query-keys';
 import { useTranslation } from 'react-i18next';
 
 const TITLE_MAX = 120;
@@ -26,7 +27,7 @@ export default function NoteDetail() {
   const [hydratedFor, setHydratedFor] = useState<string | null>(null);
 
   const detailQuery = useQuery({
-    queryKey: ['notes', 'detail', org?.id, id],
+    queryKey: orgModuleKey('notes', 'detail', org?.id ?? '', id ?? ''),
     queryFn: () => trpc.notes.get.query({ organizationId: org!.id, noteId: id! }),
     enabled: !!org && typeof id === 'string',
   });
